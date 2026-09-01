@@ -58,17 +58,9 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
           chmod 600 "$key_file"
 
+          ssh-keygen -p -P "$SSH_PASSPHRASE" -N '' -f "$key_file" >/dev/null
           eval "$(ssh-agent -s)"
-          if [ -n "$SSH_PASSPHRASE" ]; then
-            askpass="$ssh_dir/askpass"
-            printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$CANVAS_SSH_PASSPHRASE"' > "$askpass"
-            chmod 700 "$askpass"
-            CANVAS_SSH_PASSPHRASE="$SSH_PASSPHRASE" \
-              SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE=force \
-              ssh-add "$key_file" < /dev/null
-          else
-            ssh-add "$key_file"
-          fi
+          ssh-add "$key_file"
           printf 'SSH_AUTH_SOCK=%s\n' "$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           printf 'SSH_AGENT_PID=%s\n' "$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
