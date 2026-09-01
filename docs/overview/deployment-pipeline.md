@@ -53,7 +53,7 @@ ghcr.io/waninter/canvas:sha-<commit-sha>
 
 ## 服务器准备
 
-生产服务器的 `/srv/canvas` 需要包含更新后的 `docker-compose.yml` 和正式 `.env`。`.env` 只保存在服务器，不提交到 Git，也不通过 workflow 输出。验证阶段使用独立容器名、`127.0.0.1:3001` 和独立数据目录，不修改旧服务使用的 `/srv/infinite-canvas`、`127.0.0.1:3000` 或 `canvas.waninter.com`。
+生产服务器的 `/srv/canvas` 使用 `deploy/docker-compose.production.yml` 对应的 Compose 配置和正式 `.env`。`.env` 只保存在服务器，不提交到 Git，也不通过 workflow 输出。验证阶段使用独立容器名、`127.0.0.1:3001` 和独立数据目录，不修改旧服务使用的 `/srv/infinite-canvas`、`127.0.0.1:3000` 或 `canvas.waninter.com`。
 
 Compose 使用：
 
@@ -70,6 +70,8 @@ ssh -L 3001:127.0.0.1:3001 tencent-175
 随后在本机打开 `http://127.0.0.1:3001`。功能确认前不修改 Caddy 或生产域名。
 
 如 GHCR 镜像为私有仓库，应提前在服务器执行一次 `docker login ghcr.io`，或为部署 workflow 增加专用的只读镜像凭证。
+
+生产 Compose 同时运行独立的 `postgresql-canvas`，仅通过 `canvas-network` 向应用提供 PostgreSQL，不发布宿主机端口。数据库数据保存在 `postgresql-canvas-data` Docker volume，与 `AI-Creative-Studio` 的 PostgreSQL、网络、账号和数据边界完全分离；Canvas 数据库需要配置自己的备份与恢复流程。
 
 ## GitHub 配置
 
