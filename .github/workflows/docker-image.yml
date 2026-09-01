@@ -120,7 +120,7 @@ jobs:
       - name: Report image digest
         shell: bash
         run: |
-          image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
           image_digest="$(docker buildx imagetools inspect "$image_tag" | awk '/Digest:/ {print $2; exit}')"
           test -n "$image_digest"
           {
