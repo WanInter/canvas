@@ -760,7 +760,15 @@ func newS3RequestWithQuery(method string, provider model.StorageProvider, object
 		return nil, err
 	}
 	escapedKey := strings.TrimLeft(objectKey, "/")
-	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/" + provider.Bucket + "/" + escapedKey
+	basePath := strings.TrimRight(endpoint.Path, "/")
+	if provider.AddressingStyle == model.StorageAddressingVirtual {
+		if !strings.HasPrefix(strings.ToLower(endpoint.Hostname()), strings.ToLower(provider.Bucket)+".") {
+			endpoint.Host = provider.Bucket + "." + endpoint.Host
+		}
+		endpoint.Path = basePath + "/" + escapedKey
+	} else {
+		endpoint.Path = basePath + "/" + provider.Bucket + "/" + escapedKey
+	}
 	if query != nil {
 		endpoint.RawQuery = query.Encode()
 	}
@@ -771,11 +779,11 @@ func newS3RequestWithQuery(method string, provider model.StorageProvider, object
 	if contentLength > 0 {
 		request.ContentLength = contentLength
 	}
-	signS3Request(request, provider, escapedKey)
+	signS3Request(request, provider)
 	return request, nil
 }
 
-func signS3Request(request *http.Request, provider model.StorageProvider, objectKey string) {
+func signS3Request(request *http.Request, provider model.StorageProvider) {
 	nowTime := time.Now().UTC()
 	amzDate := nowTime.Format("20060102T150405Z")
 	dateStamp := nowTime.Format("20060102")
@@ -787,7 +795,7 @@ func signS3Request(request *http.Request, provider model.StorageProvider, object
 	request.Header.Set("Host", request.URL.Host)
 	request.Header.Set("X-Amz-Date", amzDate)
 	request.Header.Set("X-Amz-Content-Sha256", payloadHash)
-	canonicalURI := "/" + provider.Bucket + "/" + strings.ReplaceAll(url.PathEscape(objectKey), "%2F", "/")
+	canonicalURI := request.URL.EscapedPath()
 	canonicalHeaders := "host:" + request.URL.Host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 	canonicalRequest := request.Method + "\n" + canonicalURI + "\n" + request.URL.RawQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
@@ -841,6 +849,7 @@ func normalizeUserStorageProviderForOwner(input StorageObjectProviderInput, owne
 		Endpoint:        input.Endpoint,
 		Region:          input.Region,
 		Bucket:          input.Bucket,
+		AddressingStyle: input.AddressingStyle,
 		AccessKeyID:     input.AccessKeyID,
 		SecretAccessKey: input.SecretAccessKey,
 		PublicBaseURL:   input.PublicBaseURL,

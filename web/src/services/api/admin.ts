@@ -249,6 +249,7 @@ export type AdminStorageProvider = {
     endpoint: string;
     region: string;
     bucket: string;
+    addressingStyle: "path" | "virtual";
     accessKeyId: string;
     secretAccessKey: string;
     publicBaseUrl: string;

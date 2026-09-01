@@ -27,6 +27,7 @@ export type UserS3StorageProvider = UserStorageProviderBase & {
     type: "s3";
     region: string;
     bucket: string;
+    addressingStyle: "path" | "virtual";
     accessKeyId: string;
     secretAccessKey: string;
     publicBaseUrl: string;
@@ -392,6 +393,7 @@ export function defaultUserStorageProvider(): UserS3StorageProvider {
         endpoint: "",
         region: "auto",
         bucket: "",
+        addressingStyle: "path",
         accessKeyId: "",
         secretAccessKey: "",
         publicBaseUrl: "",
@@ -475,6 +477,7 @@ export function toProviderPayload(provider: UserStorageProvider) {
         endpoint: provider.endpoint,
         region: provider.region || "auto",
         bucket: provider.bucket,
+        addressingStyle: provider.addressingStyle,
         accessKeyId: provider.accessKeyId,
         secretAccessKey: provider.secretAccessKey,
         publicBaseUrl: provider.publicBaseUrl,

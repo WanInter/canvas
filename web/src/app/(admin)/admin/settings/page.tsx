@@ -47,7 +47,7 @@ const emptySettings: AdminSettings = {
     private: { channels: [], promptSync: { enabled: true, cron: "0 0 * * *" }, aiLog: { localDirectReportEnabled: false, cleanup: { enabled: false, retentionDays: 14, cron: "0 3 * * *" } }, auth: { linuxDo: { clientId: "", clientSecret: "" } }, storage: { mode: "local_indexeddb", allowUserProvider: false, allowUserGlobalProvider: true, providers: [], roundRobinCursor: 0, capacityCheck: { enabled: false, cron: "0 */6 * * *" }, capacityLimitBytes: 9 * 1024 * 1024 * 1024 } },
 };
 const emptyChannel: AdminModelChannel = { id: "", protocol: "openai", name: "", baseUrl: modelChannelDefaultBaseUrls.openai, apiKey: "", models: [], weight: 1, timeout: 600, enabled: true, remark: "" };
-const emptyS3StorageProvider: AdminStorageProvider = { id: "", name: "", type: "s3", endpoint: "", region: "auto", bucket: "", accessKeyId: "", secretAccessKey: "", publicBaseUrl: "", pathPrefix: "canvas", username: "", password: "", weight: 1, enabled: true, ownerUserId: "", capacityBytes: 0, capacityCheckedAt: "", capacityExceeded: false };
+const emptyS3StorageProvider: AdminStorageProvider = { id: "", name: "", type: "s3", endpoint: "", region: "auto", bucket: "", addressingStyle: "path", accessKeyId: "", secretAccessKey: "", publicBaseUrl: "", pathPrefix: "canvas", username: "", password: "", weight: 1, enabled: true, ownerUserId: "", capacityBytes: 0, capacityCheckedAt: "", capacityExceeded: false };
 const emptyWebDAVStorageProvider: AdminStorageProvider = { ...emptyS3StorageProvider, name: "", type: "webdav", region: "" };
 
 type SettingsTabKey = "public" | "private";
@@ -596,7 +596,7 @@ export default function AdminSettingsPage() {
                                         {(fields, { add, remove }) => (
                                             <Flex vertical gap={12}>
                                                 <Button icon={<PlusOutlined />} onClick={() => add(newAdminStorageProvider("s3", storageProviders))}>
-                                                    新增 S3/R2 配置
+                                                    新增 S3/R2/COS 配置
                                                 </Button>
                                                 <Button icon={<PlusOutlined />} onClick={() => add(newAdminStorageProvider("webdav", storageProviders))}>
                                                     新增 WebDAV 配置
@@ -615,7 +615,7 @@ export default function AdminSettingsPage() {
                                                         <Card
                                                             key={field.key}
                                                             size="small"
-                                                            title={isWebDAV ? "WebDAV" : "S3/R2"}
+                                                            title={isWebDAV ? "WebDAV" : "S3/R2/COS"}
                                                             extra={
                                                                 <Flex gap={8}>
                                                                     <Button size="small" loading={measuringProviderIndex === field.name} onClick={() => void measureStorageProviderAt(field.name)}>
@@ -691,6 +691,11 @@ export default function AdminSettingsPage() {
                                                                     </>
                                                                 ) : (
                                                                     <>
+                                                                        <Col xs={24} md={6}>
+                                                                            <Form.Item name={[field.name, "addressingStyle"]} label="寻址方式">
+                                                                                <Segmented block options={[{ label: "路径", value: "path" }, { label: "虚拟主机", value: "virtual" }]} />
+                                                                            </Form.Item>
+                                                                        </Col>
                                                                         <Col xs={24} md={6}>
                                                                             <Form.Item name={[field.name, "accessKeyId"]} label="Access Key ID">
                                                                                 <Input />
@@ -1070,6 +1075,7 @@ function normalizeStorageProvider(item: Partial<AdminStorageProvider> = {}): Adm
         id: item.id || "",
         type,
         region: type === "s3" ? item.region || "auto" : "",
+        addressingStyle: type === "s3" && item.addressingStyle === "virtual" ? "virtual" : "path",
         weight: Math.max(1, Number(item.weight) || 1),
         enabled: item.enabled !== false,
         capacityBytes: Number(item.capacityBytes) || 0,

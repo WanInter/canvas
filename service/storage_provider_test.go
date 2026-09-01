@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/tigerowo/infinite-canvas/model"
@@ -67,6 +68,53 @@ func TestStorageProviderConfigured(t *testing.T) {
 		Type: model.StorageProviderTypeWebDAV, Endpoint: "https://dav.example.com",
 	}) {
 		t.Fatal("WebDAV provider without credentials should be incomplete")
+	}
+}
+
+func TestNewS3RequestAddressingStyle(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider model.StorageProvider
+		wantURL  string
+	}{
+		{
+			name: "path",
+			provider: model.StorageProvider{
+				Endpoint: "https://s3.example.com", Region: "auto", Bucket: "media", AddressingStyle: model.StorageAddressingPath,
+				AccessKeyID: "key", SecretAccessKey: "secret",
+			},
+			wantURL: "https://s3.example.com/media/canvas/user/file.png",
+		},
+		{
+			name: "virtual",
+			provider: model.StorageProvider{
+				Endpoint: "https://cos.ap-guangzhou.myqcloud.com", Region: "ap-guangzhou", Bucket: "media-1250000000", AddressingStyle: model.StorageAddressingVirtual,
+				AccessKeyID: "key", SecretAccessKey: "secret",
+			},
+			wantURL: "https://media-1250000000.cos.ap-guangzhou.myqcloud.com/canvas/user/file.png",
+		},
+		{
+			name: "virtual endpoint already contains bucket",
+			provider: model.StorageProvider{
+				Endpoint: "https://media-1250000000.cos.ap-guangzhou.myqcloud.com", Region: "ap-guangzhou", Bucket: "media-1250000000", AddressingStyle: model.StorageAddressingVirtual,
+				AccessKeyID: "key", SecretAccessKey: "secret",
+			},
+			wantURL: "https://media-1250000000.cos.ap-guangzhou.myqcloud.com/canvas/user/file.png",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := newS3Request(http.MethodGet, test.provider, "canvas/user/file.png", nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.URL.String() != test.wantURL {
+				t.Fatalf("URL = %q, want %q", request.URL.String(), test.wantURL)
+			}
+			if request.Header.Get("Authorization") == "" {
+				t.Fatal("request should be signed")
+			}
+		})
 	}
 }
 

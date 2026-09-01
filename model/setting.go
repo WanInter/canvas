@@ -5,12 +5,14 @@ import "encoding/json"
 type SettingKey string
 
 const (
-	SettingKeyPublic  SettingKey = "public"
-	SettingKeyPrivate SettingKey = "private"
+	SettingKeyPublic                 SettingKey = "public"
+	SettingKeyPrivate                SettingKey = "private"
 	SettingKeyAgentSkillsInitialized SettingKey = "agent-skills-initialized"
 
 	StorageProviderTypeS3     = "s3"
 	StorageProviderTypeWebDAV = "webdav"
+	StorageAddressingPath     = "path"
+	StorageAddressingVirtual  = "virtual"
 )
 
 // ModelChannel 模型渠道配置。
@@ -127,6 +129,7 @@ type StorageProvider struct {
 	Endpoint          string `json:"endpoint"`
 	Region            string `json:"region"`
 	Bucket            string `json:"bucket"`
+	AddressingStyle   string `json:"addressingStyle"`
 	AccessKeyID       string `json:"accessKeyId"`
 	SecretAccessKey   string `json:"secretAccessKey"`
 	PublicBaseURL     string `json:"publicBaseUrl"`

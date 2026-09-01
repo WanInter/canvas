@@ -1032,6 +1032,12 @@ func normalizeStorageProvider(provider model.StorageProvider) model.StorageProvi
 	if provider.Type == model.StorageProviderTypeS3 && provider.Region == "" {
 		provider.Region = "auto"
 	}
+	if provider.Type == model.StorageProviderTypeS3 {
+		provider.AddressingStyle = strings.ToLower(strings.TrimSpace(provider.AddressingStyle))
+		if provider.AddressingStyle != model.StorageAddressingVirtual {
+			provider.AddressingStyle = model.StorageAddressingPath
+		}
+	}
 	if provider.ID == "" {
 		provider.ID = stableStorageProviderID(provider)
 	}
