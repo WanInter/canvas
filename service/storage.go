@@ -152,7 +152,7 @@ func PublicStorageConfig() (model.PublicStorageSetting, error) {
 
 	mode := "local_indexeddb"
 	if HasAdminStorageProvider(storage) {
-		mode = "server_sqlite_s3"
+		mode = "server_s3"
 	} else if storage.AllowUserProvider {
 		mode = "hybrid"
 	}

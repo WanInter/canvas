@@ -62,7 +62,7 @@ let storageConfigPromise: Promise<StorageConfig> | null = null;
 
 export function canUseGlobalStorage(config: StorageConfig) {
     const user = useUserStore.getState().user;
-    return config.mode === "server_sqlite_s3" && Boolean(user && user.role !== "guest" && (user.role === "admin" || config.allowUserGlobalProvider));
+    return config.mode === "server_s3" && Boolean(user && user.role !== "guest" && (user.role === "admin" || config.allowUserGlobalProvider));
 }
 
 function isLocalNetworkHost(hostname: string) {
