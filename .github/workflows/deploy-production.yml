@@ -1,0 +1,130 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "已验证的镜像 digest，例如 ghcr.io/waninter/canvas@sha256:..."
+        required: true
+        type: string
+      deploy_path:
+        description: "服务器上的 Canvas Compose 目录"
+        required: true
+        default: /srv/infinite-canvas
+        type: string
+      health_url:
+        description: "部署后从服务器检查的健康地址"
+        required: true
+        default: http://127.0.0.1:3000/api/health
+        type: string
+      dry_run:
+        description: "只检查 SSH、部署目录和 Compose，不拉取或重启服务"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy selected image
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - name: Validate image reference
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+        run: |
+          case "$IMAGE_REF" in
+            ghcr.io/waninter/canvas@sha256:*) ;;
+            *) echo "image_ref 必须是 ghcr.io/waninter/canvas 的 sha256 digest" >&2; exit 1 ;;
+          esac
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: Prepare known hosts
+        env:
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          test -n "$KNOWN_HOSTS"
+          mkdir -p "$RUNNER_TEMP/canvas-ssh"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/canvas-ssh/known_hosts"
+
+      - name: Deploy and verify
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
+          IMAGE_REF: ${{ inputs.image_ref }}
+          DEPLOY_PATH: ${{ inputs.deploy_path }}
+          HEALTH_URL: ${{ inputs.health_url }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/canvas-ssh/known_hosts
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS_FILE")
+          image_arg=$(printf '%q' "$IMAGE_REF")
+          path_arg=$(printf '%q' "$DEPLOY_PATH")
+          health_arg=$(printf '%q' "$HEALTH_URL")
+          dry_run_arg=$(printf '%q' "$DRY_RUN")
+          ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $image_arg $path_arg $health_arg $dry_run_arg" <<'REMOTE'
+          set -eu
+
+          image_ref="$1"
+          deploy_path="$2"
+          health_url="$3"
+          dry_run="$4"
+          state_file="$deploy_path/.last-image-ref"
+
+          cd "$deploy_path"
+          docker compose config >/dev/null
+          if [ "$dry_run" = "true" ]; then
+            echo "dry-run: SSH and Compose configuration verified"
+            exit 0
+          fi
+
+          previous_ref=""
+          if [ -s "$state_file" ]; then
+            previous_ref=$(sed -n '1p' "$state_file")
+          fi
+          if [ -z "$previous_ref" ]; then
+            container_id=$(docker compose ps -q app 2>/dev/null || true)
+            if [ -n "$container_id" ]; then
+              previous_ref=$(docker inspect --format '{{.Config.Image}}' "$container_id" 2>/dev/null || true)
+            fi
+          fi
+
+          IMAGE_REF="$image_ref" docker compose pull app
+          IMAGE_REF="$image_ref" docker compose up -d --no-build app
+
+          ready=0
+          attempt=1
+          while [ "$attempt" -le 30 ]; do
+            if curl -fsS --max-time 5 "$health_url" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+            attempt=$((attempt + 1))
+          done
+
+          if [ "$ready" -eq 1 ]; then
+            printf '%s\n' "$image_ref" > "$state_file"
+            exit 0
+          fi
+
+          if [ -n "$previous_ref" ] && [ "$previous_ref" != "$image_ref" ]; then
+            echo "new image failed health check; rolling back" >&2
+            IMAGE_REF="$previous_ref" docker compose up -d --no-build app
+          fi
+          exit 1
+          REMOTE

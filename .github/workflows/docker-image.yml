@@ -2,6 +2,7 @@ name: Docker image
 
 on:
   push:
+    branches: [main, master]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -10,7 +11,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  IMAGE_NAME: ghcr.io/waninter/canvas
 
 jobs:
   meta:
@@ -25,7 +26,9 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=tag
-            type=sha,prefix=
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
 
   build:
     needs: meta
@@ -113,3 +116,15 @@ jobs:
           done < <(find "$RUNNER_TEMP/digests" -type f -printf '%f\n' | sort)
 
           docker buildx imagetools create "${tag_args[@]}" "${digest_args[@]}"
+
+      - name: Report image digest
+        shell: bash
+        run: |
+          image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          image_digest="$(docker buildx imagetools inspect "$image_tag" | awk '/Digest:/ {print $2; exit}')"
+          test -n "$image_digest"
+          {
+            echo "### Published image"
+            echo
+            echo '\`'"${IMAGE_NAME}@${image_digest}"'\`'
+          } >> "$GITHUB_STEP_SUMMARY"
