@@ -121,8 +121,8 @@ jobs:
         shell: bash
         run: |
           image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
-          image_digest="sha256:$(docker buildx imagetools inspect "$image_tag" --raw | sha256sum | awk '{print $1}')"
-          test -n "$image_digest"
+          image_digest="$(docker buildx imagetools inspect "$image_tag" | awk '$1 == "Digest:" {print $2; exit}')"
+          [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           {
             echo "### Published image"
             echo
