@@ -71,6 +71,15 @@ func TestStorageProviderConfigured(t *testing.T) {
 	}
 }
 
+func TestStorageHTTPClientTrustBoundary(t *testing.T) {
+	if storageHTTPClient(model.StorageProvider{}) != adminStorageHTTPClient {
+		t.Fatal("admin storage provider should use the trusted endpoint client")
+	}
+	if storageHTTPClient(model.StorageProvider{OwnerUserID: "user"}) != SafeProxyHTTPClient() {
+		t.Fatal("user storage provider should keep SSRF protection")
+	}
+}
+
 func TestNewS3RequestAddressingStyle(t *testing.T) {
 	tests := []struct {
 		name     string

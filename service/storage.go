@@ -76,7 +76,25 @@ var (
 	storageCapacityCron *cron.Cron
 	storageCapacityOnce sync.Once
 	storageCapacityMu   sync.Mutex
+	adminStorageHTTPClient = func() *http.Client {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
+		return &http.Client{
+			Transport: transport,
+			Timeout:   5 * time.Minute,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+	}()
 )
+
+func storageHTTPClient(provider model.StorageProvider) *http.Client {
+	if strings.TrimSpace(provider.OwnerUserID) == "" {
+		return adminStorageHTTPClient
+	}
+	return SafeProxyHTTPClient()
+}
 
 // HasAdminStorageProvider 检查管理员是否配置了有效的对象存储。
 func HasAdminStorageProvider(storage model.PrivateStorageSetting) bool {
@@ -657,7 +675,7 @@ func putS3Object(provider model.StorageProvider, objectKey string, contentType s
 		return err
 	}
 	request.Header.Set("Content-Type", contentType)
-	response, err := SafeProxyHTTPClient().Do(request)
+	response, err := storageHTTPClient(provider).Do(request)
 	if err != nil {
 		return err
 	}
@@ -678,7 +696,7 @@ func getS3ObjectStream(provider model.StorageProvider, objectKey string, rangeHe
 	if strings.TrimSpace(rangeHeader) != "" {
 		request.Header.Set("Range", rangeHeader)
 	}
-	response, err := SafeProxyHTTPClient().Do(request)
+	response, err := storageHTTPClient(provider).Do(request)
 	if err != nil {
 		return storageObjectStream{}, err
 	}
@@ -695,7 +713,7 @@ func deleteS3Object(provider model.StorageProvider, objectKey string) error {
 	if err != nil {
 		return err
 	}
-	response, err := SafeProxyHTTPClient().Do(request)
+	response, err := storageHTTPClient(provider).Do(request)
 	if err != nil {
 		return err
 	}
@@ -724,7 +742,7 @@ func measureS3Provider(provider model.StorageProvider) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		response, err := SafeProxyHTTPClient().Do(request)
+		response, err := storageHTTPClient(provider).Do(request)
 		if err != nil {
 			return 0, err
 		}
