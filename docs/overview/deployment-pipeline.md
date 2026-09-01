@@ -5,7 +5,7 @@ description: 当前项目的自动检查、镜像发布和生产部署流程
 
 # 发布流水线
 
-当前采用单环境生产发布，不设置长期 staging。现有线上 Canvas 保持在 `tencent-175` 的 `/srv/infinite-canvas`，生产域名为 `canvas.waninter.com`。
+当前采用单环境生产发布，不设置长期 staging。现有线上 Canvas 保持在 `tencent-175` 的 `/srv/infinite-canvas`，生产域名为 `canvas.waninter.com`。新版先在同一服务器的 `/srv/canvas` 并行运行，通过独立端口验证后再切换域名。
 
 ## 流程
 
@@ -37,28 +37,37 @@ ghcr.io/waninter/canvas:sha-<commit-sha>
 
 ### 生产部署
 
-在 GitHub Actions 手动运行 `Deploy production`，输入已验证的镜像 digest。该 workflow 默认开启 `dry_run`，只检查 SSH、部署目录和 Compose 配置，不会拉取或重启服务。确认无误后关闭 `dry_run` 再执行真实部署。workflow 使用 GitHub `production` environment，配置审批规则后，审批通过才会 SSH 到生产服务器。
+在 GitHub Actions 手动运行 `Deploy production`，输入已验证的镜像 digest。该 workflow 默认开启 `dry_run`，只检查 SSH、部署目录、Compose 配置及 Compose 实际解析出的镜像，不会拉取或重启服务。确认无误后关闭 `dry_run` 再执行真实部署。workflow 使用 GitHub `production` environment，配置审批规则后，审批通过才会 SSH 到生产服务器。
 
 部署过程会：
 
 1. 校验镜像必须来自 `ghcr.io/waninter/canvas` 且使用 digest。
-2. 拉取指定镜像。
-3. 使用 `IMAGE_REF` 重建 Compose 服务。
-4. 轮询 `/api/health`。
-5. 成功后记录 `.last-image-ref`。
-6. 健康检查失败时恢复上一个镜像引用。
+2. 校验服务器 Compose 实际使用的镜像与指定 digest 一致。
+3. 拉取指定镜像。
+4. 使用 `IMAGE_REF` 重建 Compose 服务。
+5. 轮询 `/api/health`。
+6. 成功后记录 `.last-image-ref`。
+7. 健康检查失败时恢复上一个镜像引用。
 
 当前图片和音频任务仍由应用进程执行，正式部署前应避免在任务高峰期发布。视频任务已持久化，服务重启后会继续轮询。
 
 ## 服务器准备
 
-生产服务器的 Compose 目录需要包含更新后的 `docker-compose.yml` 和正式 `.env`。`.env` 只保存在服务器，不提交到 Git，也不通过 workflow 输出。
+生产服务器的 `/srv/canvas` 需要包含更新后的 `docker-compose.yml` 和正式 `.env`。`.env` 只保存在服务器，不提交到 Git，也不通过 workflow 输出。验证阶段使用独立容器名、`127.0.0.1:3001` 和独立数据目录，不修改旧服务使用的 `/srv/infinite-canvas`、`127.0.0.1:3000` 或 `canvas.waninter.com`。
 
 Compose 使用：
 
 ```yaml
 image: ${IMAGE_REF:-ghcr.io/waninter/canvas:latest}
 ```
+
+验证阶段通过 SSH 隧道访问：
+
+```bash
+ssh -L 3001:127.0.0.1:3001 tencent-175
+```
+
+随后在本机打开 `http://127.0.0.1:3001`。功能确认前不修改 Caddy 或生产域名。
 
 如 GHCR 镜像为私有仓库，应提前在服务器执行一次 `docker login ghcr.io`，或为部署 workflow 增加专用的只读镜像凭证。
 

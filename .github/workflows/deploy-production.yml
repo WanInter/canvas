@@ -10,12 +10,12 @@ on:
       deploy_path:
         description: "服务器上的 Canvas Compose 目录"
         required: true
-        default: /srv/infinite-canvas
+        default: /srv/canvas
         type: string
       health_url:
         description: "部署后从服务器检查的健康地址"
         required: true
-        default: http://127.0.0.1:3000/api/health
+        default: http://127.0.0.1:3001/api/health
         type: string
       dry_run:
         description: "只检查 SSH、部署目录和 Compose，不拉取或重启服务"
@@ -99,9 +99,13 @@ jobs:
           state_file="$deploy_path/.last-image-ref"
 
           cd "$deploy_path"
-          docker compose config >/dev/null
+          IMAGE_REF="$image_ref" docker compose config >/dev/null
+          if ! IMAGE_REF="$image_ref" docker compose config --images | grep -Fxq "$image_ref"; then
+            echo "Compose app image does not match the selected digest" >&2
+            exit 1
+          fi
           if [ "$dry_run" = "true" ]; then
-            echo "dry-run: SSH and Compose configuration verified"
+            echo "dry-run: SSH, Compose, and selected image verified"
             exit 0
           fi
 
