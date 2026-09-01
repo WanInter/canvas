@@ -47,10 +47,30 @@ jobs:
           esac
 
       - name: Configure SSH
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
-          ssh-passphrase: ${{ secrets.PRODUCTION_SSH_KEY_PASSPHRASE }}
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.PRODUCTION_SSH_KEY_PASSPHRASE }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/canvas-ssh"
+          mkdir -p "$ssh_dir"
+          key_file="$ssh_dir/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+
+          eval "$(ssh-agent -s)"
+          if [ -n "$SSH_PASSPHRASE" ]; then
+            askpass="$ssh_dir/askpass"
+            printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$CANVAS_SSH_PASSPHRASE"' > "$askpass"
+            chmod 700 "$askpass"
+            CANVAS_SSH_PASSPHRASE="$SSH_PASSPHRASE" \
+              SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE=force \
+              ssh-add "$key_file" < /dev/null
+          else
+            ssh-add "$key_file"
+          fi
+          printf 'SSH_AUTH_SOCK=%s\n' "$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          printf 'SSH_AGENT_PID=%s\n' "$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
       - name: Prepare known hosts
         env:
