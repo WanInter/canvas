@@ -71,6 +71,7 @@ image: ${IMAGE_REF:-ghcr.io/waninter/canvas:latest}
 | `PRODUCTION_HOST` | 生产服务器地址或 SSH 别名对应的地址 |
 | `PRODUCTION_USER` | SSH 用户 |
 | `PRODUCTION_SSH_KEY` | 专用部署私钥 |
+| `PRODUCTION_SSH_KEY_PASSPHRASE` | 私钥口令；未设置口令时留空 |
 | `PRODUCTION_KNOWN_HOSTS` | 预先确认的 SSH 主机指纹 |
 
 不要把 PostgreSQL、COS、AI 渠道或 JWT 密钥放进 GitHub Actions；这些配置继续保存在生产服务器 `.env` 或独立密钥管理服务中。

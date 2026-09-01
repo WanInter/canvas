@@ -50,6 +50,7 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          ssh-passphrase: ${{ secrets.PRODUCTION_SSH_KEY_PASSPHRASE }}
 
       - name: Prepare known hosts
         env:
