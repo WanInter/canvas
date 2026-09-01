@@ -121,7 +121,14 @@ jobs:
         shell: bash
         run: |
           image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
-          image_digest="$(docker buildx imagetools inspect "$image_tag" | awk '$1 == "Digest:" {print $2; exit}')"
+          image_digest=""
+          for attempt in 1 2 3 4 5; do
+            if inspect_output="$(docker buildx imagetools inspect "$image_tag" 2>/dev/null)"; then
+              image_digest="$(awk '$1 == "Digest:" {print $2; exit}' <<< "$inspect_output")"
+              [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]] && break
+            fi
+            sleep $((attempt * 2))
+          done
           [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           {
             echo "### Published image"
