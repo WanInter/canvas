@@ -12,6 +12,7 @@ import (
 )
 
 const videoTaskPollInterval = 5 * time.Second
+const videoTaskTimeout = 30 * time.Minute
 const videoTaskFinishedRetention = 10 * time.Minute
 const videoTaskCleanupInterval = 10 * time.Minute
 
@@ -227,6 +228,13 @@ func runVideoTaskPoller() {
 				lastCleanupAt = current
 			}
 			for _, task := range tasks {
+				// Let legacy unknown tasks poll once so completed upstream work can recover.
+				if !isLegacyUnknownVideoTask(task) && videoTaskTimedOut(task, current) {
+					if err := UpdateVideoTaskFromPoll(task, VideoTaskPollUpdate{Status: "failed", Error: "视频生成超时", ErrorDetail: "视频任务超过 30 分钟仍未完成"}); err != nil {
+						log.Printf("timeout video task failed id=%s err=%v", task.ID, err)
+					}
+					continue
+				}
 				if _, loaded := inFlight.LoadOrStore(task.ID, true); loaded {
 					continue
 				}
@@ -314,8 +322,17 @@ func NormalizeVideoTaskStatus(status string) string {
 	case "queued", "queue", "pending", "":
 		return "queued"
 	default:
-		return strings.ToLower(strings.TrimSpace(status))
+		return "processing"
 	}
+}
+
+func isLegacyUnknownVideoTask(task model.VideoTask) bool {
+	return strings.EqualFold(strings.TrimSpace(task.Status), "unknown")
+}
+
+func videoTaskTimedOut(task model.VideoTask, current time.Time) bool {
+	createdAt, err := time.Parse(time.RFC3339, strings.TrimSpace(task.CreatedAt))
+	return err == nil && current.Sub(createdAt) >= videoTaskTimeout
 }
 
 func IsCompletedVideoTaskStatus(status string) bool {
