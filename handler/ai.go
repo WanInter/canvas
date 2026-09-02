@@ -546,6 +546,9 @@ func agnesVideoQueryID(modelName string, path string) (string, bool) {
 }
 
 func resolveAIProxyPath(channel model.ModelChannel, modelName string, path string) string {
+	if strings.EqualFold(strings.TrimSpace(channel.Protocol), "waninter") {
+		return path
+	}
 	if service.IsGeminiChannel(channel) {
 		switch path {
 		case "/chat/completions":
@@ -638,10 +641,9 @@ func isCogVideoX3Model(modelName string) bool {
 	return strings.EqualFold(strings.TrimSpace(modelName), "cogvideox-3")
 }
 
-func isArkSeedanceVideo(baseURL string, modelName string) bool {
+func isArkSeedanceVideo(baseURL string, _ string) bool {
 	base := strings.ToLower(baseURL)
-	model := strings.ToLower(modelName)
-	return strings.Contains(model, "seedance") || strings.Contains(model, "doubao-seedance") || strings.Contains(base, "/api/plan/v3")
+	return strings.Contains(base, "/api/plan/v3")
 }
 
 func isAgnesVideoModel(modelName string) bool {

@@ -99,6 +99,9 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
+	if idempotencyKey := strings.TrimSpace(r.Header.Get("X-Idempotency-Key")); idempotencyKey != "" {
+		request.Header.Set("X-Idempotency-Key", idempotencyKey)
+	}
 	logContext := aiLogContext{
 		StartedAt:       startedAt,
 		Endpoint:        "/videos",

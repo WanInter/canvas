@@ -1,4 +1,5 @@
 import axios from "axios";
+import { nanoid } from "nanoid";
 
 import { dataUrlToFile, readFileAsDataUrl } from "@/lib/image-utils";
 import { isMiniMaxH3Config, normalizeMiniMaxH3Duration, normalizeMiniMaxH3Ratio, normalizeMiniMaxH3Resolution } from "@/lib/minimax-video";
@@ -45,6 +46,9 @@ function aiApiUrl(config: AiConfig, path: string) {
 }
 
 function aiVideoPollUrl(config: AiConfig, model: string, id: string) {
+    if (isWaninterVideoConfig(config, model)) {
+        return aiApiUrl(config, `/videos/${encodeURIComponent(id)}`);
+    }
     if (!usesAccountProxy(config) && isGeminiConfig(config, model)) {
         const channel = localChannelForActiveModel(config);
         return geminiOperationUrl(channel?.baseUrl || config.baseUrl, id);
@@ -113,14 +117,17 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     try {
         const createOptions = normalizeVideoTaskCreateOptions(options);
         const accountProxy = usesAccountProxy(config);
-        const headers = { ...aiHeaders(config), ...(accountProxy && createOptions.clientTaskId ? { "X-Client-Video-Task-ID": createOptions.clientTaskId } : {}), ...(accountProxy && createOptions.source ? { "X-Video-Task-Source": createOptions.source } : {}), ...(accountProxy && createOptions.sourceId ? { "X-Video-Task-Source-ID": createOptions.sourceId } : {}) };
+        const waninter = isWaninterVideoConfig(config, model);
+        const headers = { ...aiHeaders(config), ...(waninter ? { "Content-Type": "application/json", "X-Idempotency-Key": nanoid() } : {}), ...(accountProxy && createOptions.clientTaskId ? { "X-Client-Video-Task-ID": createOptions.clientTaskId } : {}), ...(accountProxy && createOptions.source ? { "X-Video-Task-Source": createOptions.source } : {}), ...(accountProxy && createOptions.sourceId ? { "X-Video-Task-Source-ID": createOptions.sourceId } : {}) };
         const directProvider = !accountProxy ? directAIProviderForConfig(config) : null;
         const channel = localChannelForActiveModel(config);
-        const createUrl = !accountProxy && isGeminiConfig(config, model)
-            ? geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "predictLongRunning")
-            : !accountProxy && isMiniMaxH3Config(config, model)
-                ? miniMaxApiUrl(config, "/v2/video_generation")
-                : aiApiUrl(config, !accountProxy && (isGrok2APIVideoConfig(config, model) || isCogVideoX3Model(model)) ? "/videos/generations" : "/videos");
+        const createUrl = waninter
+            ? aiApiUrl(config, "/videos")
+            : !accountProxy && isGeminiConfig(config, model)
+                ? geminiActionUrl(channel?.baseUrl || config.baseUrl, model, "predictLongRunning")
+                : !accountProxy && isMiniMaxH3Config(config, model)
+                    ? miniMaxApiUrl(config, "/v2/video_generation")
+                    : aiApiUrl(config, !accountProxy && (isGrok2APIVideoConfig(config, model) || isCogVideoX3Model(model)) ? "/videos/generations" : "/videos");
         const requestBody = !accountProxy && isGeminiConfig(config, model) ? withoutVideoModel(body) : body;
         const created = directProvider
             ? await (await import("@/services/api/direct-ai")).createDirectVideoTask(config, directProvider, body)
@@ -260,6 +267,7 @@ async function createAgnesVideoV25RequestBody(config: AiConfig, model: string, p
 
 async function createVideoRequestBody(config: AiConfig, model: string, prompt: string, input: Required<VideoReferenceInput>) {
     const size = normalizeVideoSize(config.size);
+    if (isWaninterVideoConfig(config, model)) return createWaninterVideoRequestBody(config, model, prompt, input);
     if (isGeminiVideoModel(model) && isGeminiConfig(config, model)) return createGeminiVeoRequestBody(config, model, prompt, input);
     if (isGrok2APIVideoConfig(config, model)) return createGrok2APIVideoRequestBody(config, model, prompt, input);
     if (isMiniMaxH3Config(config, model)) return createMiniMaxH3VideoRequestBody(config, model, prompt, input);
@@ -339,6 +347,25 @@ async function createVideoRequestBody(config: AiConfig, model: string, prompt: s
     const audioFiles = kling ? [] : await Promise.all(input.audioReferences.map(mediaReferenceToFormValue));
     audioFiles.forEach((file) => body.append("audio_reference[]", file));
     return body;
+}
+
+async function createWaninterVideoRequestBody(config: AiConfig, model: string, prompt: string, input: Required<VideoReferenceInput>) {
+    const images = await Promise.all(input.references.map(waninterReferenceImage));
+    const videoUrls = await Promise.all(input.videoReferences.map(waninterMediaReferenceUrl));
+    const audioUrls = await Promise.all(input.audioReferences.map(waninterMediaReferenceUrl));
+    const seconds = normalizeWaninterVideoSeconds(config.videoSeconds);
+    const aspectRatio = normalizeSeedanceRatio(config.size);
+    return {
+        model,
+        prompt,
+        seconds,
+        duration: Number(seconds),
+        resolution: normalizeVideoResolution(config.vquality),
+        ...(aspectRatio !== "adaptive" ? { aspect_ratio: aspectRatio } : {}),
+        ...(images.length ? { images } : {}),
+        ...(videoUrls.length ? { video_urls: videoUrls } : {}),
+        ...(audioUrls.length ? { audio_urls: audioUrls } : {}),
+    };
 }
 
 async function createMiniMaxH3VideoRequestBody(config: AiConfig, model: string, prompt: string, input: Required<VideoReferenceInput>) {
@@ -437,6 +464,10 @@ function isKIEKlingVideoConfig(config: AiConfig, model: string, key: string) {
 
 function videoChannelProtocol(config: AiConfig, model: string) {
     return channelProtocolForConfig({ ...config, model, videoModel: model });
+}
+
+function isWaninterVideoConfig(config: AiConfig, model: string) {
+    return videoChannelProtocol(config, model) === "waninter";
 }
 
 function normalizeCharacterOrientation(value: string | undefined) {
@@ -567,6 +598,22 @@ async function mediaReferenceToFormValue(media: ReferenceVideo | ReferenceAudio)
     return mediaReferenceToFile(media);
 }
 
+async function waninterReferenceImage(image: ReferenceImage) {
+    const resolvedUrl = await resolveImageUrl(image.storageKey, "");
+    for (const url of [image.url, resolvedUrl, image.dataUrl]) {
+        const publicUrl = publicHttpUrl(url);
+        if (publicUrl) return publicUrl;
+    }
+    return imageToDataUrl(image);
+}
+
+async function waninterMediaReferenceUrl(media: ReferenceVideo | ReferenceAudio) {
+    const resolvedUrl = await resolveMediaUrl(media.storageKey, media.url);
+    const url = publicHttpUrl(resolvedUrl) || publicHttpUrl(media.url);
+    if (!url) throw new VideoRequestError("Waninter 参考视频和音频必须具有公网访问地址");
+    return url;
+}
+
 async function imageToAgnesReference(image: ReferenceImage) {
     const resolvedUrl = await resolveImageUrl(image.storageKey, "");
     for (const url of [image.dataUrl, image.url, resolvedUrl]) {
@@ -619,6 +666,11 @@ function videoPollId(model: string, task: VideoResponse) {
 function normalizeVideoSeconds(value: string) {
     const seconds = Math.floor(Number(value) || 6);
     return String(Math.max(1, Math.min(30, seconds)));
+}
+
+function normalizeWaninterVideoSeconds(value: string) {
+    const seconds = Math.floor(Number(value) || 6);
+    return String(Math.max(1, Math.min(25, seconds)));
 }
 
 function isGeminiOmniFlashVideoModel(model: string) {

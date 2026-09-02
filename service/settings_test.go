@@ -71,6 +71,7 @@ func TestBuildModelChannelURLZhipuV4(t *testing.T) {
 		{"https://open.bigmodel.cn/api/paas/v4/", "/models", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"https://open.bigmodel.cn/api/paas/v4", "/images/generations", "https://open.bigmodel.cn/api/paas/v4/images/generations"},
 		{"https://ark.cn-beijing.volces.com/api/plan/v3", "/chat/completions", "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions"},
+		{"https://api.waninter.com", "/videos", "https://api.waninter.com/v1/videos"},
 		{"https://api.openai.com", "/chat/completions", "https://api.openai.com/v1/chat/completions"},
 	}
 	for _, tt := range tests {

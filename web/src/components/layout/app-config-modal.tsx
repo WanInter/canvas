@@ -335,6 +335,7 @@ export function AppConfigModal() {
                                                 value={channel.protocol}
                                                 options={[
                                                     { label: "OpenAI", value: "openai" },
+                                                    { label: "Waninter API", value: "waninter" },
                                                     { label: "Gemini", value: "gemini" },
                                                     { label: "Grok2API", value: "grok2api" },
                                                     { label: "MiniMax & METASO", value: "metaso" },
