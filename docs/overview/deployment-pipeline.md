@@ -19,7 +19,7 @@ GitHub Actions 并行执行：
 
 PR 检查通过后才合并到 `main`。
 
-### 合并 main
+### 合并 main（自动部署）
 
 镜像 workflow 自动构建 amd64 和 arm64，并推送到：
 
@@ -27,29 +27,35 @@ PR 检查通过后才合并到 `main`。
 ghcr.io/waninter/canvas
 ```
 
-每次构建会生成 commit 标签，例如：
+每次构建会生成 commit 标签和对应的不可变 digest，例如：
 
 ```text
 ghcr.io/waninter/canvas:sha-<commit-sha>
+ghcr.io/waninter/canvas@sha256:<digest>
 ```
+
+镜像发布成功后，`Docker image` workflow 的 `deploy` job 会自动通过 SSH 把该 commit 的 digest 部署到生产服务器，执行 `deploy/deploy.sh`：
+
+1. 校验 Compose 实际使用的镜像与指定 digest 一致。
+2. 拉取指定镜像并重建 Compose 服务。
+3. 轮询 `/api/health`。
+4. 成功后把当前镜像记录到服务器 `.last-image-ref`。
+5. 健康检查失败时自动恢复上一个镜像引用。
 
 生产部署使用镜像的 `sha256` digest，不使用 `latest` 作为发布依据。
 
-### 生产部署
-
-在 GitHub Actions 手动运行 `Deploy production`，输入已验证的镜像 digest。该 workflow 默认开启 `dry_run`，只检查 SSH、部署目录、Compose 配置及 Compose 实际解析出的镜像，不会拉取或重启服务。确认无误后关闭 `dry_run` 再执行真实部署。workflow 使用 GitHub `production` environment，配置审批规则后，审批通过才会 SSH 到生产服务器。
-
-部署过程会：
-
-1. 校验镜像必须来自 `ghcr.io/waninter/canvas` 且使用 digest。
-2. 校验服务器 Compose 实际使用的镜像与指定 digest 一致。
-3. 拉取指定镜像。
-4. 使用 `IMAGE_REF` 重建 Compose 服务。
-5. 轮询 `/api/health`。
-6. 成功后记录 `.last-image-ref`。
-7. 健康检查失败时恢复上一个镜像引用。
-
 当前图片和音频任务仍由应用进程执行，正式部署前应避免在任务高峰期发布。视频任务已持久化，服务重启后会继续轮询。
+
+### 回滚
+
+在 GitHub Actions 手动运行 `Rollback production`：
+
+- 不填参数：回滚到服务器 `.last-image-ref` 记录的上一个镜像。
+- 填参数：回滚到指定 commit 的镜像标签，例如 `sha-1a2b3c4`（workflow 会把标签解析成 digest 再部署）。
+
+回滚同样经过 `deploy/deploy.sh` 的健康检查，失败时会恢复到当前镜像。
+
+> 注意：`production` environment 若配置了审批规则，自动部署会被阻塞等待人工审批；要实现纯自动化请不要配置 required reviewers。
 
 ## 服务器准备
 

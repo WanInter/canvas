@@ -83,6 +83,8 @@ jobs:
       - meta
       - build
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.inspect.outputs.digest }}
     steps:
       - uses: docker/setup-buildx-action@v3
 
@@ -117,7 +119,8 @@ jobs:
 
           docker buildx imagetools create "${tag_args[@]}" "${digest_args[@]}"
 
-      - name: Report image digest
+      - id: inspect
+        name: Report image digest
         shell: bash
         run: |
           image_tag="${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
@@ -135,3 +138,56 @@ jobs:
             echo
             echo '\`'"${IMAGE_NAME}@${image_digest}"'\`'
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "digest=$image_digest" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy to production
+    needs: merge
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.PRODUCTION_SSH_KEY_PASSPHRASE }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/canvas-ssh"
+          mkdir -p "$ssh_dir"
+          key_file="$ssh_dir/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          ssh-keygen -p -P "$SSH_PASSPHRASE" -N '' -f "$key_file" >/dev/null
+          eval "$(ssh-agent -s)"
+          ssh-add "$key_file"
+          printf 'SSH_AUTH_SOCK=%s\n' "$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          printf 'SSH_AGENT_PID=%s\n' "$SSH_AGENT_PID" >> "$GITHUB_ENV"
+
+      - name: Prepare known hosts
+        env:
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          test -n "$KNOWN_HOSTS"
+          mkdir -p "$RUNNER_TEMP/canvas-ssh"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/canvas-ssh/known_hosts"
+
+      - name: Deploy and verify
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
+          IMAGE_REF: ${{ env.IMAGE_NAME }}@${{ needs.merge.outputs.digest }}
+          DEPLOY_PATH: /srv/canvas
+          HEALTH_URL: http://127.0.0.1:3001/api/health
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/canvas-ssh/known_hosts
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS_FILE")
+          image_arg=$(printf '%q' "$IMAGE_REF")
+          path_arg=$(printf '%q' "$DEPLOY_PATH")
+          health_arg=$(printf '%q' "$HEALTH_URL")
+          ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $image_arg $path_arg $health_arg false" < "$GITHUB_WORKSPACE/deploy/deploy.sh"

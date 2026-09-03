@@ -1,0 +1,102 @@
+name: Rollback production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_tag:
+        description: "回滚到指定镜像的 commit 标签，例如 sha-1a2b3c4；留空则回滚到上一个镜像"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  DEPLOY_PATH: /srv/canvas
+  HEALTH_URL: http://127.0.0.1:3001/api/health
+  IMAGE_NAME: ghcr.io/waninter/canvas
+
+jobs:
+  rollback:
+    name: Rollback production image
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_PASSPHRASE: ${{ secrets.PRODUCTION_SSH_KEY_PASSPHRASE }}
+        run: |
+          set -eu
+          ssh_dir="$RUNNER_TEMP/canvas-ssh"
+          mkdir -p "$ssh_dir"
+          key_file="$ssh_dir/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          ssh-keygen -p -P "$SSH_PASSPHRASE" -N '' -f "$key_file" >/dev/null
+          eval "$(ssh-agent -s)"
+          ssh-add "$key_file"
+          printf 'SSH_AUTH_SOCK=%s\n' "$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          printf 'SSH_AGENT_PID=%s\n' "$SSH_AGENT_PID" >> "$GITHUB_ENV"
+
+      - name: Prepare known hosts
+        env:
+          KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+        run: |
+          test -n "$KNOWN_HOSTS"
+          mkdir -p "$RUNNER_TEMP/canvas-ssh"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/canvas-ssh/known_hosts"
+
+      - name: Resolve rollback image
+        env:
+          COMMIT_TAG: ${{ inputs.commit_tag }}
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/canvas-ssh/known_hosts
+        run: |
+          set -eu
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS_FILE")
+          if [ -n "$COMMIT_TAG" ]; then
+            case "$COMMIT_TAG" in
+              sha-[0-9a-f]*) ;;
+              *) echo "commit_tag 必须是 sha- 前缀的镜像标签，例如 sha-1a2b3c4" >&2; exit 1 ;;
+            esac
+            digest=$(docker buildx imagetools inspect "$IMAGE_NAME:$COMMIT_TAG" | awk '$1 == "Digest:" {print $2; exit}')
+            if ! echo "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+              echo "镜像 $IMAGE_NAME:$COMMIT_TAG 不存在或 digest 无效" >&2
+              exit 1
+            fi
+            image_ref="$IMAGE_NAME@$digest"
+          else
+            image_ref=$(ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "cat $DEPLOY_PATH/.last-image-ref 2>/dev/null || true")
+            case "$image_ref" in
+              ghcr.io/waninter/canvas@sha256:*) ;;
+              *) echo "服务器上没有记录上一个镜像，无法默认回滚；请填写 commit_tag" >&2; exit 1 ;;
+            esac
+          fi
+          printf 'IMAGE_REF=%s\n' "$image_ref" >> "$GITHUB_ENV"
+
+      - name: Deploy and verify
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/canvas-ssh/known_hosts
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS_FILE")
+          image_arg=$(printf '%q' "$IMAGE_REF")
+          path_arg=$(printf '%q' "$DEPLOY_PATH")
+          health_arg=$(printf '%q' "$HEALTH_URL")
+          ssh "${ssh_opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- $image_arg $path_arg $health_arg false" < "$GITHUB_WORKSPACE/deploy/deploy.sh"
