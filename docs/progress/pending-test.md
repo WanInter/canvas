@@ -5,11 +5,9 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
-- 合并 `main` 后 `Docker image` workflow 会发布镜像并自动部署到 `/srv/canvas`，健康检查失败时自动回滚；待合并后验证首个自动部署。
-- 新增 `Rollback production` workflow：不填参数回滚到上一个镜像，填 `sha-<commit>` 回滚到指定 commit 镜像；待人工演练一次默认回滚和指定 commit 回滚。
-- 服务器部署逻辑抽到 `deploy/deploy.sh`，自动部署和手动回滚共用；待确认 workflow 通过 stdin 执行脚本无误。
-- 首页轮播移除 metaso 跳转链接，轮播图片不再可点击跳转；待确认页面无其他跳转行为异常。
-- 移除右上角 GitHub 图标与链接，并删除 `github-link.tsx` 组件；待确认各页面右上角布局正常。
+- 已验证合并 `main` 后 `Docker image` workflow 自动构建镜像并通过 `deploy/deploy.sh` 部署到 `/srv/canvas`（digest `sha256:5ca2ea24...`），健康检查通过。
+- 已验证部署后首页轮播不再包含 metaso 跳转链接、右上角 GitHub 图标与链接已移除（残留 `metaso.cn/minimax` 为模型渠道 API Key 指引配置，属正常内容）。
+- `Rollback production` workflow：不填参数回滚到上一个镜像，填 `sha-<commit>` 回滚到指定 commit 镜像；待人工演练一次默认回滚和指定 commit 回滚。
 - 已验证 PR workflow 能并行完成 Go 测试、前端构建和 Docker 构建。
 - 已验证合并 `main` 后能构建并推送 `ghcr.io/waninter/canvas` 的多架构镜像。
 - 已在不影响现有 `canvas.waninter.com` 的前提下，通过 GitHub `production` environment 在 `/srv/canvas` 并行部署指定 digest 并通过健康检查；待人工功能测试和失败回滚演练。
