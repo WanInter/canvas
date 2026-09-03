@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       commit_tag:
-        description: "回滚到指定镜像的 commit 标签，例如 sha-1a2b3c4；留空则回滚到上一个镜像"
+        description: "回滚到指定 commit 的镜像，可填 7 位短哈希、完整修订号或 sha- 前缀标签，例如 1a2b3c4；留空则回滚到上一个镜像"
         required: false
         type: string
 
@@ -68,13 +68,18 @@ jobs:
           test -n "$DEPLOY_USER"
           ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS_FILE")
           if [ -n "$COMMIT_TAG" ]; then
-            case "$COMMIT_TAG" in
-              sha-[0-9a-f]*) ;;
-              *) echo "commit_tag 必须是 sha- 前缀的镜像标签，例如 sha-1a2b3c4" >&2; exit 1 ;;
+            commit_sha="${COMMIT_TAG#sha-}"
+            case "$commit_sha" in
+              *[!0-9a-fA-F]*) echo "commit_tag 必须是 commit 哈希（可带 sha- 前缀），例如 1a2b3c4 或完整修订号" >&2; exit 1 ;;
             esac
-            digest=$(docker buildx imagetools inspect "$IMAGE_NAME:$COMMIT_TAG" | awk '$1 == "Digest:" {print $2; exit}')
+            if [ "${#commit_sha}" -lt 7 ]; then
+              echo "commit_tag 至少需要 7 位 commit 哈希" >&2
+              exit 1
+            fi
+            image_tag="sha-$(printf '%s' "$commit_sha" | cut -c1-7 | tr 'A-F' 'a-f')"
+            digest=$(docker buildx imagetools inspect "$IMAGE_NAME:$image_tag" | awk '$1 == "Digest:" {print $2; exit}')
             if ! echo "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
-              echo "镜像 $IMAGE_NAME:$COMMIT_TAG 不存在或 digest 无效" >&2
+              echo "镜像 $IMAGE_NAME:$image_tag 不存在或 digest 无效（该 commit 可能未成功构建镜像）" >&2
               exit 1
             fi
             image_ref="$IMAGE_NAME@$digest"
