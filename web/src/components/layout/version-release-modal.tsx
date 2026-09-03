@@ -48,7 +48,7 @@ export function VersionReleaseModal({ className, style }: VersionReleaseModalPro
                 title="查看版本更新"
             >
                 <span className="relative inline-flex">
-                    {APP_VERSION}
+                    更新文档
                     {hasNewVersion ? <span className="absolute -right-1.5 -top-1 size-1.5 rounded-full bg-green-500" /> : null}
                 </span>
             </button>
