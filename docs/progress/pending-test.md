@@ -5,6 +5,8 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- CI 与镜像流水线合并为单个 `Release` workflow：push `main` 只产生一条运行记录，PR 在同 workflow 中执行测试与构建验证；待下次 push/PR 验证。
+- 右上角版本入口改为「更新文档」并对齐导航链接字号与间距；待确认浅色/深色主题下显示效果。
 - 已验证合并 `main` 后 `Docker image` workflow 自动构建镜像并通过 `deploy/deploy.sh` 部署到 `/srv/canvas`（digest `sha256:5ca2ea24...`），健康检查通过。
 - 已验证部署后首页轮播不再包含 metaso 跳转链接、右上角 GitHub 图标与链接已移除（残留 `metaso.cn/minimax` 为模型渠道 API Key 指引配置，属正常内容）。
 - `Rollback production` workflow：不填参数回滚到上一个镜像，填 `sha-<commit>` 回滚到指定 commit 镜像；待人工演练一次默认回滚和指定 commit 回滚。

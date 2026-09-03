@@ -42,7 +42,7 @@ export function VersionReleaseModal({ className, style }: VersionReleaseModalPro
         <>
             <button
                 type="button"
-                className={className || "shrink-0 cursor-pointer text-xs font-medium text-stone-500 transition hover:text-stone-950 dark:text-stone-400 dark:hover:text-white"}
+                className={className || "shrink-0 cursor-pointer px-2 text-sm font-medium leading-6 text-stone-500 transition hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100"}
                 style={style}
                 onClick={openReleaseModal}
                 title="查看版本更新"

@@ -11,17 +11,11 @@ description: 当前项目的自动检查、镜像发布和生产部署流程
 
 ### Pull Request
 
-GitHub Actions 并行执行：
-
-- Go 测试
-- Next.js 前端构建
-- Docker 镜像构建验证
-
-PR 检查通过后才合并到 `main`。
+`Release` workflow 并行执行 Go 测试、Next.js 前端构建和 Docker 镜像构建验证（PR 只构建不推送镜像）。检查通过后才合并到 `main`。
 
 ### 合并 main（自动部署）
 
-镜像 workflow 自动构建 amd64 和 arm64，并推送到：
+`Release` workflow 在 `main` 上自动构建 amd64 和 arm64 镜像，并推送到：
 
 ```text
 ghcr.io/waninter/canvas
@@ -34,7 +28,7 @@ ghcr.io/waninter/canvas:sha-<commit-sha>
 ghcr.io/waninter/canvas@sha256:<digest>
 ```
 
-镜像发布成功后，`Docker image` workflow 的 `deploy` job 会自动通过 SSH 把该 commit 的 digest 部署到生产服务器，执行 `deploy/deploy.sh`：
+镜像发布成功后，同一 workflow 的 `deploy` job 会自动通过 SSH 把该 commit 的 digest 部署到生产服务器，执行 `deploy/deploy.sh`：
 
 1. 校验 Compose 实际使用的镜像与指定 digest 一致。
 2. 拉取指定镜像并重建 Compose 服务。
