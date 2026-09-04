@@ -126,6 +126,19 @@ func New() *gin.Engine {
 		handler.AgentSkillFile(c.Writer, c.Request, c.Param("id"))
 	})
 	api.GET("/assets", middleware.OptionalAuth, gin.WrapF(handler.Assets))
+
+	// AICreativeStudio 迁移的 API
+	api.GET("/models", handler.GetModelCatalog) // 获取模型目录（含 params_schema）
+	api.GET("/models/:id", handler.GetModelCatalogByID)
+
+	// 用户个人中心
+	user := api.Group("/user", middleware.UserAuth)
+	user.GET("/profile", handler.GetUserProfile)
+	user.GET("/credits/history", handler.GetUserCreditHistory)
+	user.GET("/tasks", handler.GetUserTasks)
+	user.GET("/api-keys", handler.GetUserAPIKeys)
+	user.GET("/referrals", handler.GetUserReferrals)
+
 	api.POST("/admin/login", gin.WrapF(handler.AdminLogin))
 
 	admin := api.Group("/admin", middleware.AdminAuth)
@@ -149,15 +162,15 @@ func New() *gin.Engine {
 	admin.POST("/settings/channel-models", gin.WrapF(handler.AdminChannelModels))
 	admin.POST("/settings/channel-test", gin.WrapF(handler.AdminTestChannelModel))
 	admin.POST("/storage/measure", gin.WrapF(handler.AdminMeasureStorageProvider))
-	admin.GET("/prompt-categories", gin.WrapF(handler.AdminPromptCategories))
-	admin.POST("/prompt-categories/sync", gin.WrapF(handler.AdminSyncPromptCategories))
-	admin.POST("/prompt-categories/sync-all", gin.WrapF(handler.AdminSyncAllPromptCategories))
-	admin.GET("/prompts", gin.WrapF(handler.AdminPrompts))
-	admin.POST("/prompts", gin.WrapF(handler.AdminSavePrompt))
-	admin.POST("/prompts/batch-delete", gin.WrapF(handler.AdminDeletePrompts))
-	admin.DELETE("/prompts/:id", func(c *gin.Context) {
-		handler.AdminDeletePrompt(c.Writer, c.Request, c.Param("id"))
-	})
+	// admin.GET("/prompt-categories", gin.WrapF(handler.AdminPromptCategories))
+	// admin.POST("/prompt-categories/sync", gin.WrapF(handler.AdminSyncPromptCategories))
+	// admin.POST("/prompt-categories/sync-all", gin.WrapF(handler.AdminSyncAllPromptCategories))
+	// admin.GET("/prompts", gin.WrapF(handler.AdminPrompts))
+	// admin.POST("/prompts", gin.WrapF(handler.AdminSavePrompt))
+	// admin.POST("/prompts/batch-delete", gin.WrapF(handler.AdminDeletePrompts))
+	// admin.DELETE("/prompts/:id", func(c *gin.Context) {
+	// 	handler.AdminDeletePrompt(c.Writer, c.Request, c.Param("id"))
+	// })
 	admin.GET("/agent-skills", gin.WrapF(handler.AdminAgentSkills))
 	admin.GET("/agent-skills/:id/files", func(c *gin.Context) {
 		handler.AdminAgentSkillFiles(c.Writer, c.Request, c.Param("id"))
@@ -171,6 +184,27 @@ func New() *gin.Engine {
 	admin.DELETE("/assets/:id", func(c *gin.Context) {
 		handler.AdminDeleteAsset(c.Writer, c.Request, c.Param("id"))
 	})
+
+	// AICreativeStudio 管理后台迁移的 API
+	// 用户管理
+	admin.GET("/creative/users", handler.AdminGetUsers)
+	admin.GET("/creative/users/:id", handler.AdminGetUserDetail)
+	admin.POST("/creative/users/:id/status", handler.AdminUpdateUserStatus)
+	admin.POST("/creative/users/:id/credits", handler.AdminAdjustUserCreditsV2)
+
+	// 模型管理
+	admin.GET("/creative/models", handler.AdminListModelCatalog)
+	admin.POST("/creative/models", handler.AdminCreateModelCatalog)
+	admin.PUT("/creative/models/:id", handler.AdminUpdateModelCatalog)
+	admin.DELETE("/creative/models/:id", handler.AdminDeleteModelCatalog)
+
+	// 任务管理
+	admin.GET("/creative/tasks", handler.AdminGetAllTasks)
+	admin.GET("/creative/tasks/stats", handler.AdminGetTaskStats)
+
+	// 支付管理
+	admin.GET("/creative/orders", handler.AdminGetPaymentOrders)
+	admin.GET("/creative/orders/stats", handler.AdminGetPaymentStats)
 
 	router.NoRoute(middleware.NotFoundJSON)
 
