@@ -186,7 +186,72 @@ func New() *gin.Engine {
 	})
 
 	// AICreativeStudio 管理后台迁移的 API
-	// 用户管理
+	adminV1 := api.Group("/v1/admin", middleware.AdminAuth)
+
+	// Admin Overview
+	adminV1.GET("/overview", handler.AdminGetOverview)
+
+	// Generation Providers
+	adminV1.PUT("/generation-providers/:provider", handler.AdminUpdateGenerationProvider)
+	adminV1.POST("/generation-providers/:provider/test", handler.AdminTestGenerationProvider)
+	adminV1.DELETE("/generation-providers/:provider", handler.AdminDeleteGenerationProvider)
+
+	// Billing Products
+	adminV1.PUT("/billing-products", handler.AdminUpdateBillingProduct)
+	adminV1.DELETE("/billing-products/:id", handler.AdminDeleteBillingProduct)
+
+	// Orders
+	adminV1.GET("/orders", handler.AdminGetPaymentOrders)
+	adminV1.POST("/orders/:id/sync", handler.AdminSyncOrderStatus)
+	adminV1.POST("/orders/:id/complete", handler.AdminManualCompleteOrder)
+
+	// Workers
+	adminV1.GET("/workers", handler.AdminListWorkers)
+	adminV1.PUT("/workers/:id", handler.AdminUpdateWorker)
+
+	// Users
+	adminV1.GET("/users", handler.AdminGetUsers)
+	adminV1.PUT("/users", handler.AdminUpdateAdminUser)
+	adminV1.POST("/users/:id/reset-password", handler.AdminResetUserPassword)
+	adminV1.GET("/users/:id/invited-users", handler.AdminListInvitedUsers)
+
+	// Tasks
+	adminV1.GET("/tasks", handler.AdminGetAllTasks)
+
+	// Canvas 原有管理功能
+	// AI 调用日志
+	adminV1.GET("/ai-logs", handler.AdminListAILogs)
+	adminV1.DELETE("/ai-logs", handler.AdminDeleteAILogs)
+
+	// 积分日志
+	adminV1.GET("/credit-logs", handler.AdminListCreditLogs)
+	adminV1.POST("/credit-logs", handler.AdminCreateCreditLog)
+	adminV1.DELETE("/credit-logs/:id", func(c *gin.Context) {
+		handler.AdminDeleteCreditLog(c.Writer, c.Request, c.Param("id"))
+	})
+
+	// Agent 技能管理
+	adminV1.GET("/agent-skills", handler.AdminListAgentSkills)
+	adminV1.GET("/agent-skills/:id/files", handler.AdminGetAgentSkillFiles)
+	adminV1.POST("/agent-skills", gin.WrapF(handler.AdminSaveAgentSkill))
+	adminV1.DELETE("/agent-skills/:id", func(c *gin.Context) {
+		handler.AdminDeleteAgentSkill(c.Writer, c.Request, c.Param("id"))
+	})
+
+	// 素材库管理
+	adminV1.GET("/assets", handler.AdminListAssets)
+	adminV1.POST("/assets", gin.WrapF(handler.AdminSaveAsset))
+	adminV1.DELETE("/assets/:id", func(c *gin.Context) {
+		handler.AdminDeleteAsset(c.Writer, c.Request, c.Param("id"))
+	})
+
+	// 提示词管理
+	adminV1.GET("/prompts", handler.AdminListPrompts)
+	adminV1.POST("/prompts", handler.AdminSavePrompt)
+	adminV1.DELETE("/prompts/:id", handler.AdminDeletePrompt)
+	adminV1.POST("/prompts/batch-delete", handler.AdminBatchDeletePrompts)
+
+	// 用户管理（旧路径兼容）
 	admin.GET("/creative/users", handler.AdminGetUsers)
 	admin.GET("/creative/users/:id", handler.AdminGetUserDetail)
 	admin.POST("/creative/users/:id/status", handler.AdminUpdateUserStatus)

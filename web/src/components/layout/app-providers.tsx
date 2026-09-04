@@ -8,6 +8,9 @@ import { App, ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 
 import { ClientRootInit } from "@/components/layout/client-root-init";
+import { AuthProvider } from "@/components/layout/AuthProvider";
+import { LanguageProvider } from "@/components/layout/LanguageProvider";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 import { getAntThemeConfig } from "@/lib/app-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -35,7 +38,13 @@ export function AppProviders({ children }: { children: ReactNode }) {
             <ProConfigProvider dark={dark}>
                 <App>
                     <QueryClientProvider client={queryClient}>
-                        <ClientRootInit>{children}</ClientRootInit>
+                        <AuthProvider>
+                            <LanguageProvider>
+                                <ToastProvider>
+                                    <ClientRootInit>{children}</ClientRootInit>
+                                </ToastProvider>
+                            </LanguageProvider>
+                        </AuthProvider>
                     </QueryClientProvider>
                 </App>
             </ProConfigProvider>
