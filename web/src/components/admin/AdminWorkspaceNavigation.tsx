@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Boxes, CreditCard, Users } from 'lucide-react';
+import { Activity, Boxes, CreditCard, Users, FileText } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { FOCUS_RING } from './adminUtils';
 
@@ -14,7 +14,7 @@ export type AdminNavigationItem<T extends string> = Readonly<{
 }>;
 
 type AdminNavigationGroup<T extends string> = Readonly<{
-  id: 'configuration' | 'commerce' | 'operations' | 'audience';
+  id: 'configuration' | 'commerce' | 'operations' | 'audience' | 'content';
   label: string;
   description: string;
   items: readonly AdminNavigationItem<T>[];
@@ -25,6 +25,7 @@ const GROUP_ICONS = {
   commerce: CreditCard,
   operations: Activity,
   audience: Users,
+  content: FileText,
 } as const;
 
 export function AdminWorkspaceNavigation<T extends string>({
