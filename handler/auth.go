@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/tigerowo/infinite-canvas/config"
 	"github.com/tigerowo/infinite-canvas/model"
 	"github.com/tigerowo/infinite-canvas/service"
 )
@@ -206,7 +207,11 @@ func loginRedirect(r *http.Request, redirect string, token string, message strin
 	if strings.TrimSpace(redirect) != "" {
 		values.Set("redirect", redirect)
 	}
-	return service.RequestOrigin(r) + "/login?" + values.Encode()
+	base := strings.TrimSpace(config.Cfg.PublicBaseURL)
+	if base == "" {
+		base = service.RequestOrigin(r)
+	}
+	return strings.TrimSuffix(base, "/") + "/login?" + values.Encode()
 }
 
 func AdminDeleteUser(w http.ResponseWriter, r *http.Request, id string) {
