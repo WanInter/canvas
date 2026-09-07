@@ -328,6 +328,13 @@ func SelectModelChannelForModel(modelName string, channelID string) (model.Model
 				return channel, nil
 			}
 		}
+		// 指定的 channelID 多为前端残留的本地渠道 id（如 local-default），
+		// 在 WanInter 内置渠道可用时应忽略它、回退到 WanInter，而不是报错。
+		for _, channel := range channels {
+			if channel.ID == model.WanInterChannelID {
+				return channel, nil
+			}
+		}
 		return model.ModelChannel{}, errors.New("指定模型渠道不可用")
 	}
 	total := 0
