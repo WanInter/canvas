@@ -93,6 +93,37 @@ func normalizeSettings(settings model.Settings) model.Settings {
 	return settings
 }
 
+// EnsureWanInterChannel 确保内置 WanInter 渠道存在。
+func EnsureWanInterChannel() {
+	if strings.TrimSpace(config.Cfg.WanInterOAuthBaseURL) == "" {
+		return
+	}
+	settings, err := repository.GetSettings()
+	if err != nil {
+		return
+	}
+	settings = normalizeSettings(settings)
+	channels := settings.Private.Channels
+	for i := range channels {
+		if channels[i].ID == model.WanInterChannelID {
+			return
+		}
+	}
+	channels = append(channels, model.ModelChannel{
+		ID:       model.WanInterChannelID,
+		Protocol: "openai",
+		Name:     "WanInter 云端渠道",
+		BaseURL:  strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/"),
+		Models:   []string{},
+		Weight:   1,
+		Timeout:  600,
+		Enabled:  true,
+		Remark:   "内置渠道，使用 WanInter 账号鉴权",
+	})
+	settings.Private.Channels = channels
+	_, _ = repository.SaveSettings(settings, now())
+}
+
 func normalizePublicSetting(setting model.PublicSetting) model.PublicSetting {
 	return normalizePublicSettingWithChannels(setting, nil)
 }

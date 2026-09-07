@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 type UserRole string
 
 const (
@@ -52,6 +54,7 @@ type AuthUser struct {
 	AvatarURL   string   `json:"avatarUrl"`
 	Role        UserRole `json:"role"`
 	Credits     int      `json:"credits"`
+	WanInterBound bool   `json:"waninterBound"`
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
 }
@@ -83,6 +86,13 @@ type WanInterQuota struct {
 }
 
 func PublicUser(user User) AuthUser {
+	var extra struct {
+		WanInter *WanInterAuth `json:"waninter"`
+	}
+	wanInterBound := false
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err == nil && extra.WanInter != nil {
+		wanInterBound = true
+	}
 	return AuthUser{
 		ID:          user.ID,
 		Username:    user.Username,
@@ -90,6 +100,7 @@ func PublicUser(user User) AuthUser {
 		AvatarURL:   user.AvatarURL,
 		Role:        user.Role,
 		Credits:     user.Credits,
+		WanInterBound: wanInterBound,
 		CreatedAt:   user.CreatedAt,
 		UpdatedAt:   user.UpdatedAt,
 	}
