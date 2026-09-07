@@ -196,10 +196,14 @@ function resolveEffectiveConfig(config: AiConfig, modelChannel: AdminPublicSetti
     }
     // WanInter 账号使用其实时拉取的 key 可用模型；否则用系统配置的可用模型白名单。
     const models = isWanInterUser ? wanInterModels : modelChannel.availableModels;
-    const textModels = filterChannelModelsByCapability(modelChannel.channels, "text", models);
-    const imageModels = filterChannelModelsByCapability(modelChannel.channels, "image", models);
-    const videoModels = filterChannelModelsByCapability(modelChannel.channels, "video", models);
-    const audioModels = filterChannelModelsByCapability(modelChannel.channels, "audio", models);
+    // WanInter 渠道的 models 需回填拉取到的列表，能力分类与 ModelPicker 才能按名字归类出可选项。
+    const channels = isWanInterUser
+        ? [{ id: "waninter", protocol: "waninter" as const, name: "云端渠道", baseUrl: "", models: wanInterModels, weight: 1, timeout: 600, enabled: true, remark: "" }]
+        : modelChannel.channels;
+    const textModels = filterChannelModelsByCapability(channels, "text", models);
+    const imageModels = filterChannelModelsByCapability(channels, "image", models);
+    const videoModels = filterChannelModelsByCapability(channels, "video", models);
+    const audioModels = filterChannelModelsByCapability(channels, "audio", models);
     const fallbackTextModel = validDefault(modelChannel.defaultTextModel, textModels) || preferredModel(textModels, isTextModelName) || textModels[0] || "";
     const fallbackModel = validDefault(modelChannel.defaultModel, textModels) || fallbackTextModel;
     const fallbackImageModel = validDefault(modelChannel.defaultImageModel, imageModels) || preferredModel(imageModels, isImageModelName);
@@ -219,7 +223,7 @@ function resolveEffectiveConfig(config: AiConfig, modelChannel: AdminPublicSetti
         textModel: textModels.includes(config.textModel) ? config.textModel : fallbackTextModel || fallbackModel,
         audioModel: audioModels.includes(config.audioModel) ? config.audioModel : fallbackAudioModel,
         systemPrompt: modelChannel.systemPrompt,
-        publicChannels: modelChannel.channels || [],
+        publicChannels: channels,
     };
 }
 
