@@ -673,7 +673,11 @@ type wanInterUserResponse struct {
 }
 
 func wanInterRedirectURI(r *http.Request) string {
-	return RequestOrigin(r) + "/api/auth/waninter/callback"
+	base := strings.TrimSpace(config.Cfg.PublicBaseURL)
+	if base == "" {
+		base = RequestOrigin(r)
+	}
+	return strings.TrimSuffix(base, "/") + "/api/auth/waninter/callback"
 }
 
 func wanInterAccessToken(r *http.Request, code string) (wanInterTokenResponse, error) {
