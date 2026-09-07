@@ -1122,6 +1122,14 @@ func providerSecureHash(parts []string) string {
 func modelChannelsForModel(channels []model.ModelChannel, modelName string) []model.ModelChannel {
 	result := []model.ModelChannel{}
 	for _, channel := range channels {
+		// 内置 WanInter 渠道的可用模型是登录用户动态拉取的，不入库，
+		// 且密钥为空（转发时按用户注入），因此跳过密钥与模型名匹配，直接作为候选渠道。
+		if channel.ID == model.WanInterChannelID {
+			if channel.Enabled {
+				result = append(result, channel)
+			}
+			continue
+		}
 		if !channel.Enabled || channel.BaseURL == "" || channel.APIKey == "" {
 			continue
 		}

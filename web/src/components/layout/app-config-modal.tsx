@@ -2,7 +2,6 @@
 
 import { App, Button, Form, Input, Modal, Segmented, Select, Switch } from "antd";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { ChannelModelSelectorModal } from "@/components/channel-model-selector-modal";
 import { GrokTtsVoiceSelect } from "@/components/grok-tts-voice-select";
@@ -39,7 +38,6 @@ const modelGroups: ModelGroup[] = [
 
 export function AppConfigModal() {
     const { message } = App.useApp();
-    const router = useRouter();
     const [pendingRemote, setPendingRemote] = useState(false);
     const [loadingModels, setLoadingModels] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
@@ -371,7 +369,14 @@ export function AppConfigModal() {
                         {pendingRemote && !isWanInterUser ? (
                             <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-400">
                                 <span>{isLoggedIn ? "当前是本地账号，使用云端渠道需改用 WanInter 账号登录。" : "使用云端渠道需先登录 WanInter 账号，登录后自动接入。"}</span>
-                                <Button size="small" type="primary" onClick={() => router.push("/login")}>
+                                <Button
+                                    size="small"
+                                    type="primary"
+                                    onClick={() => {
+                                        // 直接跳 WanInter OAuth 授权，登录成功后回到当前页，无需经过本站登录页。
+                                        window.location.href = `/api/auth/waninter/authorize?redirect=${encodeURIComponent(window.location.pathname)}`;
+                                    }}
+                                >
                                     去登录
                                 </Button>
                             </div>
