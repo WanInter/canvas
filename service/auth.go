@@ -554,6 +554,7 @@ func WanInterAuthorizeURL(r *http.Request, redirect string) (string, error) {
 	values.Set("redirect_uri", wanInterRedirectURI(r))
 	values.Set("response_type", "code")
 	values.Set("state", base64.RawURLEncoding.EncodeToString([]byte(redirect)))
+	values.Set("prompt", "consent")
 	return strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/") + "/api/oauth2/authorize?" + values.Encode(), nil
 }
 
@@ -586,7 +587,7 @@ func LoginWithWanInter(r *http.Request, code string, state string) (model.AuthSe
 			Username:    username,
 			DisplayName: strings.TrimSpace(profile.DisplayName),
 			AvatarURL:   strings.TrimSpace(profile.AvatarURL),
-			Role:        model.UserRoleUser,
+			Role:        wanInterRole(profile.Role),
 			AffCode:     newAffCode(),
 			Status:      model.UserStatusActive,
 			CreatedAt:   now(),
@@ -594,6 +595,7 @@ func LoginWithWanInter(r *http.Request, code string, state string) (model.AuthSe
 	} else if user.Status == model.UserStatusBan {
 		return model.AuthSession{}, redirect, safeMessageError{message: "账号已被禁用"}
 	}
+	user.Role = wanInterRole(profile.Role)
 	user.DisplayName = firstNonEmpty(profile.DisplayName, user.DisplayName)
 	user.AvatarURL = firstNonEmpty(profile.AvatarURL, user.AvatarURL)
 	user.LastLoginAt = now()
@@ -668,6 +670,7 @@ type wanInterUserResponse struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	AvatarURL   string `json:"avatar_url"`
+	Role        int    `json:"role"`
 	Quota       int    `json:"quota"`
 	UsedQuota   int    `json:"used_quota"`
 }
@@ -775,6 +778,15 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// wanInterRole 将 new-api 的角色映射为 canvas 角色。
+// new-api: 1=普通用户, 10=管理员, 100=超级管理员
+func wanInterRole(newApiRole int) model.UserRole {
+	if newApiRole >= 10 {
+		return model.UserRoleAdmin
+	}
+	return model.UserRoleUser
 }
 
 func WarnDefaultSecurityConfig() {
