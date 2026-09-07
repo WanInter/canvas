@@ -37,3 +37,29 @@ export async function register(payload: AuthPayload) {
 export async function fetchCurrentUser(token?: string) {
     return apiGet<AuthUser>("/api/auth/me", undefined, token);
 }
+
+export type WanInterKey = {
+    id: number;
+    name: string;
+    group?: string;
+    remainQuota?: number;
+    unlimitedQuota?: boolean;
+};
+
+export type WanInterKeysPayload = {
+    keys: WanInterKey[];
+    selectedKeyId: number;
+};
+
+export async function fetchWanInterKeys(token?: string) {
+    return apiGet<WanInterKeysPayload>("/api/auth/waninter/keys", undefined, token);
+}
+
+export async function selectWanInterKey(keyId: number, token?: string) {
+    return apiPost<WanInterKeysPayload>("/api/auth/waninter/select-key", { keyId }, token);
+}
+
+// 拉取 WanInter 云端渠道当前可用模型（canvas 后端代理，服务端注入选中 key，无需明文）。
+export async function fetchWanInterModels(token?: string) {
+    return apiGet<string[]>("/api/v1/models", undefined, token);
+}

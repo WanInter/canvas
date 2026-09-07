@@ -6,6 +6,7 @@ import { persist } from "zustand/middleware";
 
 import { apiGet } from "@/services/api/request";
 import type { AdminPublicSettings } from "@/services/api/admin";
+import { fetchWanInterModels } from "@/services/api/auth";
 import { useUserStore } from "@/stores/use-user-store";
 
 export type LocalModelChannel = {
@@ -170,16 +171,19 @@ type ConfigStore = {
     isPublicSettingsLoading: boolean;
     isConfigOpen: boolean;
     shouldPromptContinue: boolean;
+    wanInterModels: string[];
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
     loadPublicSettings: () => Promise<void>;
+    loadWanInterModels: (token?: string) => Promise<void>;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
     openConfigDialog: (shouldPromptContinue?: boolean) => void;
     setConfigDialogOpen: (isOpen: boolean) => void;
     clearPromptContinue: () => void;
 };
 
-function resolveEffectiveConfig(config: AiConfig, modelChannel: AdminPublicSettings["modelChannel"] | null, canUseRemoteChannel: boolean) {
-    const channelMode = canUseRemoteChannel ? (modelChannel?.allowCustomChannel ? config.channelMode : "remote") : "local";
+function resolveEffectiveConfig(config: AiConfig, modelChannel: AdminPublicSettings["modelChannel"] | null, canUseRemoteChannel: boolean, isWanInterUser: boolean, wanInterModels: string[]) {
+    // 未登录/无权限强制本地；WanInter 账号默认云端；其余按用户选择。
+    const channelMode = !canUseRemoteChannel ? "local" : isWanInterUser ? "remote" : config.channelMode;
     if (channelMode === "local" || !modelChannel) {
         const localChannels = normalizeLocalChannels(config);
         return {
@@ -190,7 +194,8 @@ function resolveEffectiveConfig(config: AiConfig, modelChannel: AdminPublicSetti
             publicChannels: modelChannel?.channels || [],
         };
     }
-    const models = modelChannel.availableModels;
+    // WanInter 账号使用其实时拉取的 key 可用模型；否则用系统配置的可用模型白名单。
+    const models = isWanInterUser ? wanInterModels : modelChannel.availableModels;
     const textModels = filterChannelModelsByCapability(modelChannel.channels, "text", models);
     const imageModels = filterChannelModelsByCapability(modelChannel.channels, "image", models);
     const videoModels = filterChannelModelsByCapability(modelChannel.channels, "video", models);
@@ -370,6 +375,7 @@ export const useConfigStore = create<ConfigStore>()(
             isPublicSettingsLoading: false,
             isConfigOpen: false,
             shouldPromptContinue: false,
+            wanInterModels: [],
             updateConfig: (key, value) =>
                 set((state) => ({
                     config: {
@@ -384,6 +390,18 @@ export const useConfigStore = create<ConfigStore>()(
                     set({ publicSettings: await apiGet<AdminPublicSettings>("/api/settings") });
                 } finally {
                     set({ isPublicSettingsLoading: false });
+                }
+            },
+            loadWanInterModels: async (token) => {
+                if (!token) {
+                    set({ wanInterModels: [] });
+                    return;
+                }
+                try {
+                    const models = await fetchWanInterModels(token);
+                    set({ wanInterModels: Array.isArray(models) ? models : [] });
+                } catch {
+                    set({ wanInterModels: [] });
                 }
             },
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
@@ -463,10 +481,12 @@ function normalizeModelList(models: string[]) {
 export function useEffectiveConfig() {
     const config = useConfigStore((state) => state.config);
     const modelChannel = useConfigStore((state) => state.publicSettings?.modelChannel || null);
+    const wanInterModels = useConfigStore((state) => state.wanInterModels);
     const token = useUserStore((state) => state.token);
     const user = useUserStore((state) => state.user);
+    const isWanInterUser = Boolean(token && user?.waninterBound);
     const canUseRemoteChannel = Boolean(token && user && (user.role === "admin" || user.waninterBound || modelChannel?.allowUserRemoteChannel === true));
-    return useMemo(() => resolveEffectiveConfig(config, modelChannel, canUseRemoteChannel), [canUseRemoteChannel, config, modelChannel]);
+    return useMemo(() => resolveEffectiveConfig(config, modelChannel, canUseRemoteChannel, isWanInterUser, wanInterModels), [canUseRemoteChannel, isWanInterUser, config, modelChannel, wanInterModels]);
 }
 
 export function buildApiUrl(baseUrl: string, path: string) {

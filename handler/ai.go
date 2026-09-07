@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,6 +63,57 @@ func failAIChannelSelect(w http.ResponseWriter, err error, fallback string) {
 
 func AIImagesGenerations(w http.ResponseWriter, r *http.Request) {
 	proxyAIRequest(w, r, "/images/generations")
+}
+
+// AIModels 代理拉取 WanInter 云端渠道可用模型列表，服务端注入当前用户选中的 API Key。
+func AIModels(w http.ResponseWriter, r *http.Request) {
+	user, ok := service.UserFromContext(r.Context())
+	if !ok {
+		Fail(w, "未登录或权限不足")
+		return
+	}
+	fullUser, ok, err := service.GetUserByID(user.ID)
+	if err != nil || !ok {
+		Fail(w, "用户信息查询失败")
+		return
+	}
+	channel := model.ModelChannel{ID: model.WanInterChannelID, Protocol: "openai"}
+	resolved, err := service.ResolveUserChannel(channel, fullUser)
+	if err != nil {
+		FailError(w, err)
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, service.BuildModelChannelURL(resolved, "/models"), nil)
+	if err != nil {
+		Fail(w, "读取模型失败")
+		return
+	}
+	service.SetModelChannelAuthHeader(req, resolved)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		Fail(w, "读取模型失败：上游接口无响应或网络不可达")
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		Fail(w, "读取模型失败")
+		return
+	}
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(body, &payload)
+	models := make([]string, 0, len(payload.Data))
+	for _, item := range payload.Data {
+		if strings.TrimSpace(item.ID) != "" {
+			models = append(models, item.ID)
+		}
+	}
+	sort.Strings(models)
+	OK(w, models)
 }
 
 func AIImagesEdits(w http.ResponseWriter, r *http.Request) {

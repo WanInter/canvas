@@ -502,10 +502,10 @@ func ResolveUserChannel(channel model.ModelChannel, user model.User) (model.Mode
 			return model.ModelChannel{}, safeMessageError{message: "WanInter 渠道未配置"}
 		}
 		resolved.BaseURL = strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/")
-		if token, ok := WanInterAccessToken(user); ok {
-			resolved.APIKey = token
+		if apiKey, ok := WanInterAPIKey(user); ok {
+			resolved.APIKey = apiKey
 		} else {
-			return model.ModelChannel{}, safeMessageError{message: "请先使用 WanInter 账号登录"}
+			return model.ModelChannel{}, safeMessageError{message: "WanInter 账号暂无可用密钥，请重新登录"}
 		}
 		return resolved, nil
 	}

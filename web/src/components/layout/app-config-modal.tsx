@@ -2,6 +2,7 @@
 
 import { App, Button, Form, Input, Modal, Segmented, Select, Switch } from "antd";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ChannelModelSelectorModal } from "@/components/channel-model-selector-modal";
 import { GrokTtsVoiceSelect } from "@/components/grok-tts-voice-select";
@@ -11,6 +12,7 @@ import { fetchUserConfig, measureUserStorageProvider, syncUserModelConfig, syncU
 import { clearStorageConfigCache as clearFileStorageCache } from "@/services/file-storage";
 import { clearStorageConfigCache as clearImageStorageCache, defaultUserStorageProvider, defaultUserWebDAVStorageProvider, loadStorageConfig, loadUserS3StorageProvider, loadUserWebDAVStorageProvider, saveUserStorageProvider, saveUserWebDAVStorageProvider, type UserStorageProvider } from "@/services/image-storage";
 import { audioFormatOptions, audioVoiceOptions, glmTtsFormatOptions, glmTtsVoiceOptions, isGlmTtsModel, normalizeAudioSpeedValue, normalizeGlmTtsFormat, normalizeGlmTtsSpeed, normalizeGlmTtsVoice } from "@/lib/audio-generation";
+import { fetchWanInterKeys, fetchWanInterModels, selectWanInterKey, type WanInterKey } from "@/services/api/auth";
 import { grokTtsFormatOptions, grokTtsLanguageOptions, isGrok2APITtsConfig, normalizeGrokTtsFormat, normalizeGrokTtsLanguage, normalizeGrokTtsSpeed } from "@/lib/grok-tts";
 import { isGeminiConfig, isGeminiTtsModel } from "@/lib/gemini";
 import { geminiTtsVoiceOptions, normalizeGeminiTtsVoice } from "@/lib/gemini-tts";
@@ -37,6 +39,8 @@ const modelGroups: ModelGroup[] = [
 
 export function AppConfigModal() {
     const { message } = App.useApp();
+    const router = useRouter();
+    const [pendingRemote, setPendingRemote] = useState(false);
     const [loadingModels, setLoadingModels] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
     const [modelSelectChannelId, setModelSelectChannelId] = useState("");
@@ -60,9 +64,20 @@ export function AppConfigModal() {
     const effectiveConfig = useEffectiveConfig();
     const modelChannel = publicSettings?.modelChannel;
     const isLoggedIn = Boolean(token && user);
-    const canUseRemoteChannel = isLoggedIn && (user?.role === "admin" || modelChannel?.allowUserRemoteChannel === true);
-    const allowCustomChannel = isLoggedIn && modelChannel?.allowCustomChannel === true;
-    const effectiveMode = canUseRemoteChannel ? (allowCustomChannel ? config.channelMode : "remote") : "local";
+    const isWanInterUser = Boolean(isLoggedIn && user?.waninterBound);
+    const [wanInterKeys, setWanInterKeys] = useState<WanInterKey[]>([]);
+    const [wanInterSelectedKeyId, setWanInterSelectedKeyId] = useState(0);
+    const [loadingWanInterKeys, setLoadingWanInterKeys] = useState(false);
+    const wanInterModels = useConfigStore((state) => state.wanInterModels);
+    const loadWanInterModels = useConfigStore((state) => state.loadWanInterModels);
+
+    // 全局：WanInter 登录态变化时拉取一次可用模型，供各页面远程模式使用。
+    useEffect(() => {
+        if (isWanInterUser && token) void loadWanInterModels(token);
+    }, [isWanInterUser, token, loadWanInterModels]);
+    const canUseRemoteChannel = isLoggedIn && (isWanInterUser || user?.role === "admin" || modelChannel?.allowUserRemoteChannel === true);
+    // 未登录或本地账号时强制本地直连；WanInter 账号默认云端渠道；其余按用户选择。
+    const effectiveMode = !isLoggedIn ? "local" : isWanInterUser ? "remote" : canUseRemoteChannel ? config.channelMode : "local";
     const localModelConfig: AiConfig = effectiveMode === "local" && config.channelMode !== "local" ? { ...config, channelMode: "local" } : config;
     const modelConfig = effectiveMode === "remote" ? effectiveConfig : localModelConfig;
     const canUseUserStorageProvider = allowUserStorageProvider;
@@ -122,6 +137,40 @@ export function AppConfigModal() {
         };
     }, [isConfigOpen]);
 
+    // WanInter 账号：拉取可用 API Key 列表与默认选中项。
+    useEffect(() => {
+        if (!isConfigOpen || !isWanInterUser || !token) {
+            setWanInterKeys([]);
+            setWanInterSelectedKeyId(0);
+            return;
+        }
+        let canceled = false;
+        setLoadingWanInterKeys(true);
+        void fetchWanInterKeys(token)
+            .then((payload) => {
+                if (canceled) return;
+                setWanInterKeys(payload.keys || []);
+                setWanInterSelectedKeyId(payload.selectedKeyId || payload.keys?.[0]?.id || 0);
+            })
+            .catch(() => {
+                if (!canceled) message.error("拉取 WanInter 密钥失败，请重新登录");
+            })
+            .finally(() => {
+                if (!canceled) setLoadingWanInterKeys(false);
+            });
+        return () => {
+            canceled = true;
+        };
+    }, [isConfigOpen, isWanInterUser, token, message]);
+
+    // WanInter 账号：经 canvas 后端代理拉取当前选中 key 可用的全部模型（key 不出服务端）。
+    useEffect(() => {
+        if (!isConfigOpen || !isWanInterUser || !token || !wanInterSelectedKeyId) {
+            return;
+        }
+        void loadWanInterModels(token);
+    }, [isConfigOpen, isWanInterUser, token, wanInterSelectedKeyId, loadWanInterModels]);
+
     const finishConfig = async () => {
         const localIncomplete = effectiveMode === "local" && normalizeLocalChannels(config).some((channel) => !channel.baseUrl.trim() || !channel.apiKey.trim());
         const modelIncomplete = !modelConfig.imageModel.trim() || !modelConfig.videoModel.trim() || !modelConfig.textModel.trim();
@@ -129,8 +178,7 @@ export function AppConfigModal() {
             message.error("S3/R2 与 WebDAV 不能同时启用");
             return;
         }
-        if (!canUseRemoteChannel && config.channelMode !== "local") updateConfig("channelMode", "local");
-        else if (canUseRemoteChannel && !allowCustomChannel && config.channelMode !== "remote") updateConfig("channelMode", "remote");
+        if (effectiveMode !== config.channelMode) updateConfig("channelMode", effectiveMode);
         if (canUseUserStorageProvider) {
             saveUserStorageProvider(userStorage);
             saveUserWebDAVStorageProvider(userWebDAVStorage);
@@ -138,7 +186,7 @@ export function AppConfigModal() {
         setSavingConfig(true);
         try {
             if (token) {
-                const configToSave = effectiveMode === "local" && config.channelMode !== "local" ? { ...config, channelMode: "local" as const } : config;
+            const configToSave = effectiveMode !== config.channelMode ? { ...config, channelMode: effectiveMode } : config;
                 await syncUserModelConfig(token, configToSave);
             }
             const providers = {
@@ -301,20 +349,34 @@ export function AppConfigModal() {
         >
             <div className="pt-1">
                 <Form layout="vertical" requiredMark={false}>
-                    {allowCustomChannel && canUseRemoteChannel ? (
-                        <Form.Item label="渠道模式" className="mb-5">
-                            <Segmented
-                                block
-                                size="middle"
-                                value={effectiveMode}
-                                onChange={(value) => updateConfig("channelMode", value as AiConfig["channelMode"])}
-                                options={[
-                                    { label: "本地直连", value: "local" },
-                                    { label: "云端渠道", value: "remote" },
-                                ]}
-                            />
-                        </Form.Item>
-                    ) : null}
+                    <Form.Item label="渠道模式" className="mb-5">
+                        <Segmented
+                            block
+                            size="middle"
+                            value={pendingRemote ? "remote" : effectiveMode}
+                            onChange={(value) => {
+                                if (value === "remote" && !isWanInterUser) {
+                                    // 未登录或本地账号：使用云端渠道需先用 WanInter 账号登录。
+                                    setPendingRemote(true);
+                                    return;
+                                }
+                                setPendingRemote(false);
+                                updateConfig("channelMode", value as AiConfig["channelMode"]);
+                            }}
+                            options={[
+                                { label: "本地直连", value: "local" },
+                                { label: "云端渠道", value: "remote" },
+                            ]}
+                        />
+                        {pendingRemote && !isWanInterUser ? (
+                            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-400">
+                                <span>{isLoggedIn ? "当前是本地账号，使用云端渠道需改用 WanInter 账号登录。" : "使用云端渠道需先登录 WanInter 账号，登录后自动接入。"}</span>
+                                <Button size="small" type="primary" onClick={() => router.push("/login")}>
+                                    去登录
+                                </Button>
+                            </div>
+                        ) : null}
+                    </Form.Item>
                     {effectiveMode === "local" ? (
                         <>
                             <div className="mb-5 space-y-3 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
@@ -380,9 +442,38 @@ export function AppConfigModal() {
                             </div>
                         </>
                     ) : (
-                        <div className="mb-5 rounded-lg border border-stone-200 p-3 text-sm text-stone-500 dark:border-stone-800">
-                            <div className="font-medium text-stone-900 dark:text-stone-100">云端渠道</div>
-                            <div className="mt-1">由系统后台渠道转发请求，当前可用 {modelChannel?.availableModels.length || 0} 个模型。</div>
+                        <div className="mb-5 space-y-3 rounded-lg border border-stone-200 p-3 text-sm text-stone-500 dark:border-stone-800">
+                            <div>
+                                <div className="font-medium text-stone-900 dark:text-stone-100">云端渠道</div>
+                                <div className="mt-1">
+                                    由 WanInter 账号云端转发请求，无需配置密钥。
+                                    {isWanInterUser ? ` 当前可用 ${wanInterModels.length} 个模型。` : null}
+                                </div>
+                            </div>
+                            {isWanInterUser && wanInterKeys.length > 1 ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="shrink-0 text-xs text-stone-500">使用密钥</span>
+                                    <Select
+                                        size="small"
+                                        className="min-w-0 flex-1"
+                                        loading={loadingWanInterKeys}
+                                        value={wanInterSelectedKeyId || undefined}
+                                        options={wanInterKeys.map((key) => ({
+                                            value: key.id,
+                                            label: `${key.name || `密钥 ${key.id}`}${key.unlimitedQuota ? "（不限额度）" : ""}`,
+                                        }))}
+                                        onChange={(keyId: number) => {
+                                            setWanInterSelectedKeyId(keyId);
+                                            void selectWanInterKey(keyId, token)
+                                                .then((payload) => {
+                                                    setWanInterSelectedKeyId(payload.selectedKeyId || keyId);
+                                                    message.success("已切换密钥");
+                                                })
+                                                .catch(() => message.error("切换密钥失败"));
+                                        }}
+                                    />
+                                </div>
+                            ) : null}
                         </div>
                     )}
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

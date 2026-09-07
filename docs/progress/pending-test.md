@@ -5,6 +5,11 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- WanInter 账号免密钥云端渠道（方案 B，待与 new-api `waninter-2026090714+` 联调）：
+  - 用 WanInter 账号登录后，配置弹窗默认选中「云端渠道」，无需填密钥；云端渠道面板显示「当前可用 N 个模型」且各默认模型下拉可选项来自该账号密钥在 new-api 的 `/v1/models`。
+  - WanInter 账号下有多个密钥时，云端渠道面板出现「使用密钥」下拉，默认选中第一个，可切换；切换后模型列表随之刷新。
+  - 未登录或用 canvas 本地账号登录时，配置默认展示「本地直连」，但保留「云端渠道」选项；点击「云端渠道」时提示需登录 WanInter 账号并提供「去登录」入口。
+  - 生图/生视频等请求经 canvas 后端转发，服务端自动注入当前选中的 WanInter API Key（key 不下发前端），计费走 new-api。
 - CI 与镜像流水线合并为单个 `Release` workflow：push `main` 只产生一条运行记录，PR 在同 workflow 中执行测试与构建验证；待下次 push/PR 验证。
 - 右上角版本入口改为「更新文档」并对齐导航链接字号与间距；待确认浅色/深色主题下显示效果。
 - 已验证合并 `main` 后 `Docker image` workflow 自动构建镜像并通过 `deploy/deploy.sh` 部署到 `/srv/canvas`（digest `sha256:5ca2ea24...`），健康检查通过。

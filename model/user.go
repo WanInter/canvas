@@ -48,15 +48,15 @@ type UserList struct {
 
 // AuthUser 用户公开信息。
 type AuthUser struct {
-	ID          string   `json:"id"`
-	Username    string   `json:"username"`
-	DisplayName string   `json:"displayName"`
-	AvatarURL   string   `json:"avatarUrl"`
-	Role        UserRole `json:"role"`
-	Credits     int      `json:"credits"`
-	WanInterBound bool   `json:"waninterBound"`
-	CreatedAt   string   `json:"createdAt"`
-	UpdatedAt   string   `json:"updatedAt"`
+	ID            string   `json:"id"`
+	Username      string   `json:"username"`
+	DisplayName   string   `json:"displayName"`
+	AvatarURL     string   `json:"avatarUrl"`
+	Role          UserRole `json:"role"`
+	Credits       int      `json:"credits"`
+	WanInterBound bool     `json:"waninterBound"`
+	CreatedAt     string   `json:"createdAt"`
+	UpdatedAt     string   `json:"updatedAt"`
 }
 
 // AuthSession 登录会话信息。
@@ -67,21 +67,33 @@ type AuthSession struct {
 
 // WanInterAuth 保存 WanInter OAuth 授权信息。
 type WanInterAuth struct {
-	AccessToken string `json:"accessToken"`
-	ExpiresAt   int64  `json:"expiresAt"`
-	UserID      int    `json:"userId"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	AvatarURL   string `json:"avatarUrl"`
-	Quota       int    `json:"quota"`
-	UsedQuota   int    `json:"usedQuota"`
+	AccessToken   string        `json:"accessToken"`
+	ExpiresAt     int64         `json:"expiresAt"`
+	UserID        int           `json:"userId"`
+	Username      string        `json:"username"`
+	DisplayName   string        `json:"displayName"`
+	AvatarURL     string        `json:"avatarUrl"`
+	Quota         int           `json:"quota"`
+	UsedQuota     int           `json:"usedQuota"`
+	APIKeys       []WanInterKey `json:"apiKeys,omitempty"`
+	SelectedKeyID int           `json:"selectedKeyId,omitempty"`
+}
+
+// WanInterKey 表示 WanInter 账号下一个可调用的 API Key。
+type WanInterKey struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	Key            string `json:"key"`
+	Group          string `json:"group,omitempty"`
+	RemainQuota    int    `json:"remainQuota,omitempty"`
+	UnlimitedQuota bool   `json:"unlimitedQuota,omitempty"`
 }
 
 // WanInterQuota 返回给前端的额度信息。
 type WanInterQuota struct {
-	Bound      bool   `json:"bound"`
-	Quota      int    `json:"quota"`
-	UsedQuota  int    `json:"usedQuota"`
+	Bound       bool   `json:"bound"`
+	Quota       int    `json:"quota"`
+	UsedQuota   int    `json:"usedQuota"`
 	DisplayName string `json:"displayName"`
 }
 
@@ -94,15 +106,15 @@ func PublicUser(user User) AuthUser {
 		wanInterBound = true
 	}
 	return AuthUser{
-		ID:          user.ID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		AvatarURL:   user.AvatarURL,
-		Role:        user.Role,
-		Credits:     user.Credits,
+		ID:            user.ID,
+		Username:      user.Username,
+		DisplayName:   user.DisplayName,
+		AvatarURL:     user.AvatarURL,
+		Role:          user.Role,
+		Credits:       user.Credits,
 		WanInterBound: wanInterBound,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
+		CreatedAt:     user.CreatedAt,
+		UpdatedAt:     user.UpdatedAt,
 	}
 }
 

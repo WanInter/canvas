@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/tigerowo/infinite-canvas/config"
 	"github.com/tigerowo/infinite-canvas/model"
 	"github.com/tigerowo/infinite-canvas/repository"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -600,16 +600,26 @@ func LoginWithWanInter(r *http.Request, code string, state string) (model.AuthSe
 	user.AvatarURL = firstNonEmpty(profile.AvatarURL, user.AvatarURL)
 	user.LastLoginAt = now()
 	user.UpdatedAt = now()
+	// 登录时拉取该账号可调用的 API Key 列表并默认选中第一个；失败不阻塞登录。
+	apiKeys, keysErr := wanInterAPIKeys(tokenResp.AccessToken)
+	selectedKeyID := 0
+	if keysErr == nil && len(apiKeys) > 0 {
+		selectedKeyID = apiKeys[0].ID
+	} else {
+		apiKeys = nil
+	}
 	extra, _ := json.Marshal(userExtra{
 		WanInter: &model.WanInterAuth{
-			AccessToken: tokenResp.AccessToken,
-			ExpiresAt:   tokenResp.ExpiresAt,
-			UserID:      profile.ID,
-			Username:    profile.Username,
-			DisplayName: profile.DisplayName,
-			AvatarURL:   profile.AvatarURL,
-			Quota:       profile.Quota,
-			UsedQuota:   profile.UsedQuota,
+			AccessToken:   tokenResp.AccessToken,
+			ExpiresAt:     tokenResp.ExpiresAt,
+			UserID:        profile.ID,
+			Username:      profile.Username,
+			DisplayName:   profile.DisplayName,
+			AvatarURL:     profile.AvatarURL,
+			Quota:         profile.Quota,
+			UsedQuota:     profile.UsedQuota,
+			APIKeys:       apiKeys,
+			SelectedKeyID: selectedKeyID,
 		},
 	})
 	user.Extra = string(extra)
@@ -658,6 +668,136 @@ func WanInterAccessToken(user model.User) (string, bool) {
 	return extra.WanInter.AccessToken, true
 }
 
+// WanInterAPIKey 返回用户选中的真实 API Key，作为 WanInter 云端渠道的实际调用凭证。
+func WanInterAPIKey(user model.User) (string, bool) {
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return "", false
+	}
+	if time.Now().Unix() >= extra.WanInter.ExpiresAt {
+		return "", false
+	}
+	keys := extra.WanInter.APIKeys
+	if len(keys) == 0 {
+		return "", false
+	}
+	for _, key := range keys {
+		if key.ID == extra.WanInter.SelectedKeyID && strings.TrimSpace(key.Key) != "" {
+			return key.Key, true
+		}
+	}
+	if strings.TrimSpace(keys[0].Key) != "" {
+		return keys[0].Key, true
+	}
+	return "", false
+}
+
+// WanInterKeys 返回当前用户的 API Key 列表（不含 key 明文），供前端展示选择。
+func WanInterKeys(user model.User) []model.WanInterKey {
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return nil
+	}
+	keys := make([]model.WanInterKey, 0, len(extra.WanInter.APIKeys))
+	for _, key := range extra.WanInter.APIKeys {
+		keys = append(keys, model.WanInterKey{
+			ID:             key.ID,
+			Name:           key.Name,
+			Group:          key.Group,
+			RemainQuota:    key.RemainQuota,
+			UnlimitedQuota: key.UnlimitedQuota,
+		})
+	}
+	return keys
+}
+
+// WanInterSelectedKeyID 返回当前用户选中的 API Key ID。
+func WanInterSelectedKeyID(user model.User) int {
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return 0
+	}
+	return extra.WanInter.SelectedKeyID
+}
+
+// wanInterAuthOf 读取并校验当前用户的 WanInter 授权信息。
+func wanInterAuthOf(userID string) (model.User, *userExtra, error) {
+	user, ok, err := repository.GetUserByID(userID)
+	if err != nil || !ok {
+		return model.User{}, nil, safeMessageError{message: "用户不存在"}
+	}
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return model.User{}, nil, safeMessageError{message: "请先使用 WanInter 账号登录"}
+	}
+	if time.Now().Unix() >= extra.WanInter.ExpiresAt {
+		return model.User{}, nil, safeMessageError{message: "WanInter 登录已过期，请重新登录"}
+	}
+	return user, &extra, nil
+}
+
+// RefreshWanInterKeys 重新拉取该用户的 API Key 列表并缓存，返回不含明文的列表。
+func RefreshWanInterKeys(userID string) ([]model.WanInterKey, int, error) {
+	user, extra, err := wanInterAuthOf(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	keys, err := wanInterAPIKeys(extra.WanInter.AccessToken)
+	if err != nil {
+		return nil, 0, err
+	}
+	extra.WanInter.APIKeys = keys
+	// 保留原选中项；若已失效则默认选第一个。
+	selected := extra.WanInter.SelectedKeyID
+	valid := false
+	for _, key := range keys {
+		if key.ID == selected {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		selected = 0
+		if len(keys) > 0 {
+			selected = keys[0].ID
+		}
+	}
+	extra.WanInter.SelectedKeyID = selected
+	data, _ := json.Marshal(extra)
+	user.Extra = string(data)
+	user.UpdatedAt = now()
+	if _, err := repository.SaveUser(user); err != nil {
+		return nil, 0, err
+	}
+	return WanInterKeys(user), selected, nil
+}
+
+// SelectWanInterKey 设置当前用户选中的 API Key。
+func SelectWanInterKey(userID string, keyID int) ([]model.WanInterKey, int, error) {
+	user, extra, err := wanInterAuthOf(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	valid := false
+	for _, key := range extra.WanInter.APIKeys {
+		if key.ID == keyID {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return nil, 0, safeMessageError{message: "所选密钥不存在"}
+	}
+	extra.WanInter.SelectedKeyID = keyID
+	data, _ := json.Marshal(extra)
+	user.Extra = string(data)
+	user.UpdatedAt = now()
+	if _, err := repository.SaveUser(user); err != nil {
+		return nil, 0, err
+	}
+	return WanInterKeys(user), keyID, nil
+}
+
 type wanInterTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
@@ -673,6 +813,43 @@ type wanInterUserResponse struct {
 	Role        int    `json:"role"`
 	Quota       int    `json:"quota"`
 	UsedQuota   int    `json:"used_quota"`
+}
+
+// wanInterTokensResponse 对应 new-api /api/oauth2/tokens 的返回。
+type wanInterTokensResponse struct {
+	Tokens []struct {
+		ID             int    `json:"id"`
+		Name           string `json:"name"`
+		Key            string `json:"key"`
+		Group          string `json:"group"`
+		RemainQuota    int    `json:"remain_quota"`
+		UnlimitedQuota bool   `json:"unlimited_quota"`
+	} `json:"tokens"`
+}
+
+// wanInterAPIKeys 用 OAuth access_token 拉取该用户可调用的完整 API Key 列表。
+func wanInterAPIKeys(token string) ([]model.WanInterKey, error) {
+	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/")+"/api/oauth2/tokens", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	var payload wanInterTokensResponse
+	if err := doWanInterJSON(req, &payload); err != nil {
+		return nil, err
+	}
+	keys := make([]model.WanInterKey, 0, len(payload.Tokens))
+	for _, item := range payload.Tokens {
+		if strings.TrimSpace(item.Key) == "" {
+			continue
+		}
+		keys = append(keys, model.WanInterKey{
+			ID:             item.ID,
+			Name:           item.Name,
+			Key:            item.Key,
+			Group:          item.Group,
+			RemainQuota:    item.RemainQuota,
+			UnlimitedQuota: item.UnlimitedQuota,
+		})
+	}
+	return keys, nil
 }
 
 func wanInterRedirectURI(r *http.Request) string {

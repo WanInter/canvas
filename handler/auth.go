@@ -107,6 +107,42 @@ func WanInterQuota(w http.ResponseWriter, r *http.Request) {
 	OK(w, quota)
 }
 
+// WanInterKeys 返回当前用户绑定的 WanInter 账号可用的 API Key 列表（不含明文）及选中项。
+func WanInterKeys(w http.ResponseWriter, r *http.Request) {
+	user, ok := service.UserFromContext(r.Context())
+	if !ok {
+		Fail(w, "请先登录")
+		return
+	}
+	keys, selected, err := service.RefreshWanInterKeys(user.ID)
+	if err != nil {
+		FailError(w, err)
+		return
+	}
+	OK(w, map[string]any{"keys": keys, "selectedKeyId": selected})
+}
+
+type selectWanInterKeyRequest struct {
+	KeyID int `json:"keyId"`
+}
+
+// WanInterSelectKey 设置当前用户使用的 WanInter API Key。
+func WanInterSelectKey(w http.ResponseWriter, r *http.Request) {
+	user, ok := service.UserFromContext(r.Context())
+	if !ok {
+		Fail(w, "请先登录")
+		return
+	}
+	var request selectWanInterKeyRequest
+	_ = json.NewDecoder(r.Body).Decode(&request)
+	keys, selected, err := service.SelectWanInterKey(user.ID, request.KeyID)
+	if err != nil {
+		FailError(w, err)
+		return
+	}
+	OK(w, map[string]any{"keys": keys, "selectedKeyId": selected})
+}
+
 func AdminLogin(w http.ResponseWriter, r *http.Request) {
 	var request loginRequest
 	_ = json.NewDecoder(r.Body).Decode(&request)
