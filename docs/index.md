@@ -6,7 +6,12 @@
 - [功能介绍](overview/features.md)
 - [Docker 部署](overview/docker.md)
 - [发布流水线](overview/deployment-pipeline.md)
+- [服务器与项目部署](overview/servers.md)
 - [第三方 GitHub 提示词仓库](overview/third-party-prompt-repositories.md)
+
+## 方案设计
+
+- [Canvas 接入 New API 统一登录与免密钥方案](plans/new-api-sso-integration.md)
 
 ## 操作手册
 
@@ -32,6 +37,7 @@
 
 ## 项目进度
 
+- [AI 上下文记忆](progress/ai-context.md)
 - [待测试](progress/pending-test.md)
 - [TODO](progress/todo.md)
 

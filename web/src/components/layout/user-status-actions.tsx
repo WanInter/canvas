@@ -1,15 +1,17 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
-import { Avatar, Dropdown, Tooltip } from "antd";
-import { Keyboard, LogOut, Settings2, Shield } from "lucide-react";
+import { Avatar, Dropdown, Tooltip, message } from "antd";
+import { Keyboard, LogOut, Settings2, Shield, Zap } from "lucide-react";
 import type { ItemType } from "antd/es/menu/interface";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { CreditSymbol } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
+import { fetchWanInterQuota, type WanInterQuota } from "@/services/api/waninter";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -35,12 +37,41 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     const credits = user?.credits ?? 0;
     const avatarUrl = user?.avatarUrl?.trim();
     const avatarText = (userName.trim()[0] || "U").toUpperCase();
+    const [wanInterQuota, setWanInterQuota] = useState<WanInterQuota | null>(null);
+    const [quotaLoading, setQuotaLoading] = useState(false);
     const naturalIconClass = "inline-flex size-7 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 dark:text-stone-300 dark:hover:text-white [&_svg]:size-4";
     const iconStyle: CSSProperties | undefined = variant === "canvas" ? { color: canvasTheme.node.text } : undefined;
     const versionStyle = iconStyle;
     const avatarStyle: CSSProperties | undefined = variant === "canvas" ? { borderColor: canvasTheme.toolbar.border, color: canvasTheme.node.text, background: "transparent" } : undefined;
+
+    useEffect(() => {
+        if (!user || variant !== "canvas") {
+            setWanInterQuota(null);
+            return;
+        }
+        setQuotaLoading(true);
+        fetchWanInterQuota()
+            .then(setWanInterQuota)
+            .catch(() => setWanInterQuota(null))
+            .finally(() => setQuotaLoading(false));
+    }, [user, variant]);
+
+    const showWanInterQuota = wanInterQuota?.bound === true;
+    const quotaRemaining = showWanInterQuota ? Math.max(0, wanInterQuota.quota - wanInterQuota.usedQuota) : 0;
     const menuItems: ItemType[] = [
         { key: "user", disabled: true, label: <span className="font-medium text-current">{userName}</span> },
+        ...(showWanInterQuota
+            ? [{
+                  key: "waninter-quota",
+                  icon: <Zap className="size-4" />,
+                  label: (
+                      <span>
+                          剩余额度：{quotaRemaining.toLocaleString()}
+                      </span>
+                  ),
+                  disabled: true,
+              }]
+            : []),
         ...(user?.role === "admin" ? [{ key: "admin", icon: <Shield className="size-4" />, label: <Link href="/admin">管理后台</Link> }] : []),
         ...(onOpenShortcuts ? [{ key: "shortcuts", icon: <Keyboard className="size-4" />, label: "快捷键", onClick: onOpenShortcuts }] : []),
         { type: "divider" },
@@ -57,12 +88,21 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
             <AnimatedThemeToggler theme={theme} onThemeChange={setTheme} className={naturalIconClass} style={iconStyle} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} />
             <VersionReleaseModal style={versionStyle} />
             {variant === "canvas" && user ? (
-                <Tooltip title="当前算力点余额" placement="bottom">
-                    <div className="flex h-8 shrink-0 items-center gap-1.5 px-1.5 text-xs font-medium tabular-nums opacity-75 transition hover:opacity-100" style={{ color: canvasTheme.node.text }}>
-                        <CreditSymbol className="text-sm leading-none" />
-                        <span>{credits.toLocaleString()}</span>
-                    </div>
-                </Tooltip>
+                showWanInterQuota ? (
+                    <Tooltip title={`WanInter 剩余额度：${quotaRemaining.toLocaleString()}`} placement="bottom">
+                        <div className="flex h-8 shrink-0 items-center gap-1.5 px-1.5 text-xs font-medium tabular-nums opacity-75 transition hover:opacity-100" style={{ color: canvasTheme.node.text }}>
+                            <Zap className="size-3.5" />
+                            <span>{quotaLoading ? "..." : quotaRemaining.toLocaleString()}</span>
+                        </div>
+                    </Tooltip>
+                ) : (
+                    <Tooltip title="当前算力点余额" placement="bottom">
+                        <div className="flex h-8 shrink-0 items-center gap-1.5 px-1.5 text-xs font-medium tabular-nums opacity-75 transition hover:opacity-100" style={{ color: canvasTheme.node.text }}>
+                            <CreditSymbol className="text-sm leading-none" />
+                            <span>{credits.toLocaleString()}</span>
+                        </div>
+                    </Tooltip>
+                )
             ) : null}
             {!user && onOpenShortcuts ? (
                 <button type="button" className={naturalIconClass} style={iconStyle} onClick={onOpenShortcuts} aria-label="快捷键" title="快捷键">

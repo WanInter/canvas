@@ -29,7 +29,8 @@ type TokenClaims struct {
 }
 
 type userExtra struct {
-	LinuxDo any `json:"linuxDo,omitempty"`
+	LinuxDo  any                 `json:"linuxDo,omitempty"`
+	WanInter *model.WanInterAuth `json:"waninter,omitempty"`
 }
 
 func EnsureDefaultAdmin() error {
@@ -229,6 +230,11 @@ func CurrentAuthUser(tokenText string) (model.AuthUser, bool) {
 		return model.AuthUser{}, false
 	}
 	return model.PublicUser(user), true
+}
+
+// GetUserByID 查询完整用户信息。
+func GetUserByID(id string) (model.User, bool, error) {
+	return repository.GetUserByID(id)
 }
 
 func ListUsers(q model.Query) (model.UserList, error) {
@@ -536,6 +542,190 @@ func linuxDoAvatar(template string) string {
 		template = "https://linux.do" + template
 	}
 	return strings.ReplaceAll(template, "{size}", "120")
+}
+
+// WanInterAuthorizeURL 生成 WanInter OAuth 授权地址。
+func WanInterAuthorizeURL(r *http.Request, redirect string) (string, error) {
+	if strings.TrimSpace(config.Cfg.WanInterOAuthBaseURL) == "" || strings.TrimSpace(config.Cfg.WanInterOAuthClientID) == "" {
+		return "", safeMessageError{message: "WanInter 登录未配置"}
+	}
+	values := url.Values{}
+	values.Set("client_id", config.Cfg.WanInterOAuthClientID)
+	values.Set("redirect_uri", wanInterRedirectURI(r))
+	values.Set("response_type", "code")
+	values.Set("state", base64.RawURLEncoding.EncodeToString([]byte(redirect)))
+	return strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/") + "/api/oauth2/authorize?" + values.Encode(), nil
+}
+
+// LoginWithWanInter 处理 WanInter OAuth 回调，完成登录。
+func LoginWithWanInter(r *http.Request, code string, state string) (model.AuthSession, string, error) {
+	redirect := decodeState(state)
+	if strings.TrimSpace(config.Cfg.WanInterOAuthBaseURL) == "" || strings.TrimSpace(config.Cfg.WanInterOAuthClientID) == "" || strings.TrimSpace(config.Cfg.WanInterOAuthClientSecret) == "" {
+		return model.AuthSession{}, redirect, safeMessageError{message: "WanInter 登录未配置"}
+	}
+	tokenResp, err := wanInterAccessToken(r, code)
+	if err != nil {
+		return model.AuthSession{}, redirect, err
+	}
+	profile, err := wanInterProfile(tokenResp.AccessToken)
+	if err != nil {
+		return model.AuthSession{}, redirect, err
+	}
+	if profile.ID <= 0 {
+		return model.AuthSession{}, redirect, safeMessageError{message: "WanInter 用户信息无效"}
+	}
+
+	username := wanInterUsername(profile.Username, profile.ID)
+	user, ok, err := repository.GetUserByUsername(username)
+	if err != nil {
+		return model.AuthSession{}, redirect, err
+	}
+	if !ok {
+		user = model.User{
+			ID:          newID("user"),
+			Username:    username,
+			DisplayName: strings.TrimSpace(profile.DisplayName),
+			AvatarURL:   strings.TrimSpace(profile.AvatarURL),
+			Role:        model.UserRoleUser,
+			AffCode:     newAffCode(),
+			Status:      model.UserStatusActive,
+			CreatedAt:   now(),
+		}
+	} else if user.Status == model.UserStatusBan {
+		return model.AuthSession{}, redirect, safeMessageError{message: "账号已被禁用"}
+	}
+	user.DisplayName = firstNonEmpty(profile.DisplayName, user.DisplayName)
+	user.AvatarURL = firstNonEmpty(profile.AvatarURL, user.AvatarURL)
+	user.LastLoginAt = now()
+	user.UpdatedAt = now()
+	extra, _ := json.Marshal(userExtra{
+		WanInter: &model.WanInterAuth{
+			AccessToken: tokenResp.AccessToken,
+			ExpiresAt:   tokenResp.ExpiresAt,
+			UserID:      profile.ID,
+			Username:    profile.Username,
+			DisplayName: profile.DisplayName,
+			AvatarURL:   profile.AvatarURL,
+			Quota:       profile.Quota,
+			UsedQuota:   profile.UsedQuota,
+		},
+	})
+	user.Extra = string(extra)
+	user, err = repository.SaveUser(user)
+	if err != nil {
+		return model.AuthSession{}, redirect, err
+	}
+	session, err := newSession(user)
+	return session, redirect, err
+}
+
+// GetWanInterQuota 查询当前用户绑定的 WanInter 账号额度。
+func GetWanInterQuota(userID string) (model.WanInterQuota, error) {
+	user, ok, err := repository.GetUserByID(userID)
+	if err != nil || !ok {
+		return model.WanInterQuota{Bound: false}, err
+	}
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return model.WanInterQuota{Bound: false}, nil
+	}
+	if time.Now().Unix() >= extra.WanInter.ExpiresAt {
+		return model.WanInterQuota{Bound: false}, safeMessageError{message: "WanInter 登录已过期，请重新登录"}
+	}
+	profile, err := wanInterProfile(extra.WanInter.AccessToken)
+	if err != nil {
+		return model.WanInterQuota{Bound: false}, err
+	}
+	return model.WanInterQuota{
+		Bound:       true,
+		Quota:       profile.Quota,
+		UsedQuota:   profile.UsedQuota,
+		DisplayName: profile.DisplayName,
+	}, nil
+}
+
+// WanInterAccessToken 获取用户有效的 WanInter access_token，供 AI 请求使用。
+func WanInterAccessToken(user model.User) (string, bool) {
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil || extra.WanInter == nil {
+		return "", false
+	}
+	if time.Now().Unix() >= extra.WanInter.ExpiresAt {
+		return "", false
+	}
+	return extra.WanInter.AccessToken, true
+}
+
+type wanInterTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int64  `json:"expires_in"`
+	ExpiresAt   int64  `json:"-"`
+}
+
+type wanInterUserResponse struct {
+	ID          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+	Quota       int    `json:"quota"`
+	UsedQuota   int    `json:"used_quota"`
+}
+
+func wanInterRedirectURI(r *http.Request) string {
+	return RequestOrigin(r) + "/api/auth/waninter/callback"
+}
+
+func wanInterAccessToken(r *http.Request, code string) (wanInterTokenResponse, error) {
+	values := url.Values{}
+	values.Set("client_id", config.Cfg.WanInterOAuthClientID)
+	values.Set("client_secret", config.Cfg.WanInterOAuthClientSecret)
+	values.Set("grant_type", "authorization_code")
+	values.Set("code", code)
+	values.Set("redirect_uri", wanInterRedirectURI(r))
+	req, _ := http.NewRequest(http.MethodPost, strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/")+"/api/oauth2/token", strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	var payload wanInterTokenResponse
+	if err := doWanInterJSON(req, &payload); err != nil {
+		return payload, err
+	}
+	if strings.TrimSpace(payload.AccessToken) == "" {
+		return payload, safeMessageError{message: "WanInter 登录失败"}
+	}
+	payload.ExpiresAt = time.Now().Unix() + payload.ExpiresIn
+	return payload, nil
+}
+
+func wanInterProfile(token string) (wanInterUserResponse, error) {
+	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/")+"/api/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	var payload wanInterUserResponse
+	err := doWanInterJSON(req, &payload)
+	return payload, err
+}
+
+func doWanInterJSON(req *http.Request, payload any) error {
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return safeMessageError{message: "WanInter 登录失败"}
+	}
+	return json.NewDecoder(bytes.NewReader(body)).Decode(payload)
+}
+
+func wanInterUsername(username string, id int) string {
+	base := strings.TrimSpace(username)
+	if base == "" {
+		base = "waninter-" + fmt.Sprint(id)
+	}
+	if _, ok, err := repository.GetUserByUsername(base); err != nil || !ok {
+		return base
+	}
+	return base + "-" + fmt.Sprint(id)
 }
 
 func decodeState(state string) string {

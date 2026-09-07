@@ -29,6 +29,9 @@ type ModelChannel struct {
 	Remark   string   `json:"remark"`
 }
 
+// WanInterChannelID 内置 WanInter 渠道标识。
+const WanInterChannelID = "waninter-new-api"
+
 // ModelCost 模型算力点配置。
 type ModelCost struct {
 	Model   string `json:"model"`

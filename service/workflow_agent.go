@@ -39,8 +39,13 @@ func DraftCreativeWorkflow(ctx context.Context, request WorkflowAgentDraftReques
 	credits, _ := ModelCost(modelName)
 	chargedCredits := request.ChannelMode != "local"
 	if chargedCredits {
-		if err := ConsumeUserCredits(user.ID, modelName, credits, "/workflows/agent-draft"); err != nil {
-			return WorkflowAgentDraftResponse{}, err
+		if IsWanInterChannel(channel) {
+			credits = 0
+			chargedCredits = false
+		} else {
+			if err := ConsumeUserCredits(user.ID, modelName, credits, "/workflows/agent-draft"); err != nil {
+				return WorkflowAgentDraftResponse{}, err
+			}
 		}
 	}
 	refundCredits := func() {
@@ -339,5 +344,4 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
-
 

@@ -74,13 +74,17 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	credits := 0
 	if userChannelID == "" {
-		credits, err = service.ModelCost(modelName)
-		if err != nil {
-			log.Printf("AI video read model cost failed: model=%s err=%v", modelName, err)
-			Fail(w, "AI 接口请求失败")
-			return
+		if service.IsWanInterChannel(channel) {
+			credits = 0
+		} else {
+			credits, err = service.ModelCost(modelName)
+			if err != nil {
+				log.Printf("AI video read model cost failed: model=%s err=%v", modelName, err)
+				Fail(w, "AI 接口请求失败")
+				return
+			}
+			credits *= readAIRequestCount(body, contentType)
 		}
-		credits *= readAIRequestCount(body, contentType)
 	}
 	upstreamPath := resolveAIProxyPath(channel, modelName, "/videos")
 	body, contentType, err = normalizeVideoCreateBody(body, contentType, modelName, channel, upstreamPath)

@@ -97,7 +97,7 @@ function LoginContent() {
                         aria-label="无限画布"
                     />
                     <h1 className="text-3xl font-semibold tracking-normal text-stone-950 dark:text-stone-100">账号登录</h1>
-                    <p className="mt-3 text-base leading-7 text-stone-500 dark:text-stone-400">支持账号密码和 Linux.do 登录。</p>
+                    <p className="mt-3 text-base leading-7 text-stone-500 dark:text-stone-400">支持账号密码、WanInter 和 Linux.do 登录。</p>
                 </div>
 
                 <Form<LoginFormValues> layout="vertical" size="large" requiredMark={false} onFinish={submit}>
@@ -129,6 +129,9 @@ function LoginContent() {
                                 使用 Linux.do 登录
                             </Button>
                         ) : null}
+                        <Button block href={`/api/auth/waninter/authorize?redirect=${encodeURIComponent(redirect)}`}>
+                            使用 WanInter 账号登录
+                        </Button>
                     </Space>
                 </Form>
             </section>

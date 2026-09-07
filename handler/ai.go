@@ -29,7 +29,25 @@ func selectAIRequestChannel(user model.AuthUser, modelName string, channelID str
 		return model.ModelChannel{}, "", fmt.Errorf("当前账号未开放云端渠道")
 	}
 	channel, err := service.SelectModelChannelForModel(modelName, channelID)
-	return channel, "", err
+	if err != nil {
+		return model.ModelChannel{}, "", err
+	}
+	return resolveAIRequestChannel(channel, user)
+}
+
+func resolveAIRequestChannel(channel model.ModelChannel, user model.AuthUser) (model.ModelChannel, string, error) {
+	if !service.IsWanInterChannel(channel) {
+		return channel, "", nil
+	}
+	fullUser, ok, err := service.GetUserByID(user.ID)
+	if err != nil || !ok {
+		return model.ModelChannel{}, "", fmt.Errorf("用户信息查询失败")
+	}
+	resolved, err := service.ResolveUserChannel(channel, fullUser)
+	if err != nil {
+		return model.ModelChannel{}, "", err
+	}
+	return resolved, "", nil
 }
 
 func failAIChannelSelect(w http.ResponseWriter, err error, fallback string) {
@@ -141,13 +159,17 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	credits := 0
 	if userChannelID == "" {
-		credits, err = service.ModelCost(modelName)
-		if err != nil {
-			log.Printf("AI proxy read model cost failed: model=%s err=%v", modelName, err)
-			Fail(w, "AI 接口请求失败")
-			return
+		if service.IsWanInterChannel(channel) {
+			credits = 0
+		} else {
+			credits, err = service.ModelCost(modelName)
+			if err != nil {
+				log.Printf("AI proxy read model cost failed: model=%s err=%v", modelName, err)
+				Fail(w, "AI 接口请求失败")
+				return
+			}
+			credits *= readAIRequestCount(body, contentType)
 		}
-		credits *= readAIRequestCount(body, contentType)
 	}
 	upstreamPath := resolveAIProxyPath(channel, modelName, path)
 	if service.IsGeminiChannel(channel) {

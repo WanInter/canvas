@@ -74,6 +74,38 @@ func LinuxDoCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, loginRedirect(r, redirect, session.Token, ""), http.StatusFound)
 }
 
+func WanInterAuthorize(w http.ResponseWriter, r *http.Request) {
+	authURL, err := service.WanInterAuthorizeURL(r, r.URL.Query().Get("redirect"))
+	if err != nil {
+		FailError(w, err)
+		return
+	}
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+func WanInterCallback(w http.ResponseWriter, r *http.Request) {
+	session, redirect, err := service.LoginWithWanInter(r, r.URL.Query().Get("code"), r.URL.Query().Get("state"))
+	if err != nil {
+		http.Redirect(w, r, loginRedirect(r, redirect, "", err.Error()), http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, loginRedirect(r, redirect, session.Token, ""), http.StatusFound)
+}
+
+func WanInterQuota(w http.ResponseWriter, r *http.Request) {
+	user, ok := service.UserFromContext(r.Context())
+	if !ok {
+		Fail(w, "请先登录")
+		return
+	}
+	quota, err := service.GetWanInterQuota(user.ID)
+	if err != nil {
+		FailError(w, err)
+		return
+	}
+	OK(w, quota)
+}
+
 func AdminLogin(w http.ResponseWriter, r *http.Request) {
 	var request loginRequest
 	_ = json.NewDecoder(r.Body).Decode(&request)

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tigerowo/infinite-canvas/config"
 	"github.com/tigerowo/infinite-canvas/model"
 	"github.com/tigerowo/infinite-canvas/repository"
 )
@@ -455,6 +456,29 @@ func normalizeModelChannel(channel model.ModelChannel) model.ModelChannel {
 		channel.Timeout = 600
 	}
 	return channel
+}
+
+// IsWanInterChannel 判断是否为内置 WanInter 渠道。
+func IsWanInterChannel(channel model.ModelChannel) bool {
+	return channel.ID == model.WanInterChannelID
+}
+
+// ResolveUserChannel 解析用户实际请求时使用的渠道，WanInter 渠道自动注入用户 access_token。
+func ResolveUserChannel(channel model.ModelChannel, user model.User) (model.ModelChannel, error) {
+	resolved := normalizeModelChannel(channel)
+	if IsWanInterChannel(resolved) {
+		if strings.TrimSpace(config.Cfg.WanInterOAuthBaseURL) == "" {
+			return model.ModelChannel{}, safeMessageError{message: "WanInter 渠道未配置"}
+		}
+		resolved.BaseURL = strings.TrimSuffix(config.Cfg.WanInterOAuthBaseURL, "/")
+		if token, ok := WanInterAccessToken(user); ok {
+			resolved.APIKey = token
+		} else {
+			return model.ModelChannel{}, safeMessageError{message: "请先使用 WanInter 账号登录"}
+		}
+		return resolved, nil
+	}
+	return resolveAdminChannel(nil, resolved)
 }
 
 func resolveAdminChannel(index *int, channel model.ModelChannel) (model.ModelChannel, error) {

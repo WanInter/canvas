@@ -62,6 +62,26 @@ type AuthSession struct {
 	User  AuthUser `json:"user"`
 }
 
+// WanInterAuth 保存 WanInter OAuth 授权信息。
+type WanInterAuth struct {
+	AccessToken string `json:"accessToken"`
+	ExpiresAt   int64  `json:"expiresAt"`
+	UserID      int    `json:"userId"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	AvatarURL   string `json:"avatarUrl"`
+	Quota       int    `json:"quota"`
+	UsedQuota   int    `json:"usedQuota"`
+}
+
+// WanInterQuota 返回给前端的额度信息。
+type WanInterQuota struct {
+	Bound      bool   `json:"bound"`
+	Quota      int    `json:"quota"`
+	UsedQuota  int    `json:"usedQuota"`
+	DisplayName string `json:"displayName"`
+}
+
 func PublicUser(user User) AuthUser {
 	return AuthUser{
 		ID:          user.ID,
