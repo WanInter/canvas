@@ -44,7 +44,9 @@ function LoginContent() {
     const linuxDoEnabled = useConfigStore((state) => state.publicSettings?.auth?.linuxDo?.enabled === true);
     const allowRegister = useConfigStore((state) => state.publicSettings?.auth?.allowRegister !== false);
     const [mode, setMode] = useState<"login" | "register">("login");
-    const redirect = safeRedirect(searchParams.get("redirect"));
+    // redirect 不能指向登录页自身，否则登录成功后跳回 /login 造成死循环。
+    const rawRedirect = safeRedirect(searchParams.get("redirect"));
+    const redirect = rawRedirect === "/login" ? "/" : rawRedirect;
 
     useEffect(() => {
         const token = searchParams.get("token");
