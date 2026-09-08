@@ -30,6 +30,10 @@ export async function login(payload: AuthPayload) {
     return apiPost<AuthSession>("/api/auth/login", payload);
 }
 
+export async function logout(token?: string) {
+    return apiPost<null>("/api/auth/logout", {}, token);
+}
+
 export async function register(payload: AuthPayload) {
     return apiPost<AuthSession>("/api/auth/register", payload);
 }

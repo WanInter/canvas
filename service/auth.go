@@ -237,6 +237,28 @@ func GetUserByID(id string) (model.User, bool, error) {
 	return repository.GetUserByID(id)
 }
 
+// Logout 服务端登出：清除用户的 WanInter 绑定（access_token 与缓存的 API Key），
+// 避免退出后凭服务端残留绑定被静默登回。JWT 本身无状态，由前端丢弃 token。
+func Logout(userID string) error {
+	user, ok, err := repository.GetUserByID(userID)
+	if err != nil || !ok {
+		return err
+	}
+	var extra userExtra
+	if err := json.Unmarshal([]byte(user.Extra), &extra); err != nil {
+		return nil
+	}
+	if extra.WanInter == nil {
+		return nil
+	}
+	extra.WanInter = nil
+	data, _ := json.Marshal(extra)
+	user.Extra = string(data)
+	user.UpdatedAt = now()
+	_, err = repository.SaveUser(user)
+	return err
+}
+
 func ListUsers(q model.Query) (model.UserList, error) {
 	users, total, err := repository.ListUsers(q)
 	if err != nil {
@@ -918,6 +940,11 @@ func decodeState(state string) string {
 		return "/"
 	}
 	return safeRedirectPath(string(data))
+}
+
+// DecodeState 解码 OAuth state 为站内回跳路径（供 handler 使用）。
+func DecodeState(state string) string {
+	return decodeState(state)
 }
 
 // safeRedirectPath 仅放行站内相对路径，拦截开放重定向。浏览器会忽略 URL 中的

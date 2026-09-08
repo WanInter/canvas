@@ -57,6 +57,20 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	OK(w, session)
 }
 
+// Logout 服务端登出：清除 WanInter 绑定。JWT 无状态，前端随后丢弃本地 token。
+func Logout(w http.ResponseWriter, r *http.Request) {
+	user, ok := service.UserFromContext(r.Context())
+	if !ok {
+		Fail(w, "请先登录")
+		return
+	}
+	if err := service.Logout(user.ID); err != nil {
+		FailError(w, err)
+		return
+	}
+	OK(w, nil)
+}
+
 func LinuxDoAuthorize(w http.ResponseWriter, r *http.Request) {
 	authURL, err := service.LinuxDoAuthorizeURL(r, r.URL.Query().Get("redirect"))
 	if err != nil {
@@ -85,6 +99,12 @@ func WanInterAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func WanInterCallback(w http.ResponseWriter, r *http.Request) {
+	// 用户在 WanInter 授权页点了“取消”。
+	if oauthErr := r.URL.Query().Get("error"); oauthErr != "" {
+		redirect := service.DecodeState(r.URL.Query().Get("state"))
+		http.Redirect(w, r, loginRedirect(r, redirect, "", "已取消 WanInter 授权"), http.StatusFound)
+		return
+	}
 	session, redirect, err := service.LoginWithWanInter(r, r.URL.Query().Get("code"), r.URL.Query().Get("state"))
 	if err != nil {
 		http.Redirect(w, r, loginRedirect(r, redirect, "", err.Error()), http.StatusFound)

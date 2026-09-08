@@ -455,6 +455,29 @@ export function AppConfigModal() {
                                     {isWanInterUser ? ` 当前可用 ${wanInterModels.length} 个模型。` : null}
                                 </div>
                             </div>
+                            {isWanInterUser ? (
+                                <div className="flex justify-end">
+                                    <Button
+                                        size="small"
+                                        loading={loadingWanInterKeys}
+                                        onClick={() => {
+                                            if (!token) return;
+                                            setLoadingWanInterKeys(true);
+                                            void fetchWanInterKeys(token)
+                                                .then((payload) => {
+                                                    setWanInterKeys(payload.keys || []);
+                                                    setWanInterSelectedKeyId(payload.selectedKeyId || payload.keys?.[0]?.id || 0);
+                                                    return loadWanInterModels(token);
+                                                })
+                                                .then(() => message.success("已刷新密钥与模型"))
+                                                .catch(() => message.error("刷新失败，请重新登录"))
+                                                .finally(() => setLoadingWanInterKeys(false));
+                                        }}
+                                    >
+                                        刷新密钥
+                                    </Button>
+                                </div>
+                            ) : null}
                             {isWanInterUser && wanInterKeys.length > 1 ? (
                                 <div className="flex items-center gap-2">
                                     <span className="shrink-0 text-xs text-stone-500">使用密钥</span>

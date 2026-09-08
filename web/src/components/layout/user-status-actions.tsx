@@ -12,6 +12,7 @@ import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { CreditSymbol } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { fetchWanInterQuota, type WanInterQuota } from "@/services/api/waninter";
+import { logout as logoutApi } from "@/services/api/auth";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -30,6 +31,7 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
     const user = useUserStore((state) => state.user);
+    const token = useUserStore((state) => state.token);
     const logout = useUserStore((state) => state.clearSession);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const canvasTheme = canvasThemes[theme];
@@ -75,7 +77,16 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
         ...(user?.role === "admin" ? [{ key: "admin", icon: <Shield className="size-4" />, label: <Link href="/admin">管理后台</Link> }] : []),
         ...(onOpenShortcuts ? [{ key: "shortcuts", icon: <Keyboard className="size-4" />, label: "快捷键", onClick: onOpenShortcuts }] : []),
         { type: "divider" },
-        { key: "logout", icon: <LogOut className="size-4" />, label: "退出登录", onClick: logout },
+        {
+            key: "logout",
+            icon: <LogOut className="size-4" />,
+            label: "退出登录",
+            onClick: () => {
+                // 先通知服务端清除 WanInter 绑定（避免被静默登回），再清本地会话。
+                if (token) void logoutApi(token).catch(() => {});
+                logout();
+            },
+        },
     ];
 
     return (
